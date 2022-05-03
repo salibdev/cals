@@ -1,8 +1,0 @@
-README.md
-setup.py
-Cals.egg-info/PKG-INFO
-Cals.egg-info/SOURCES.txt
-Cals.egg-info/dependency_links.txt
-Cals.egg-info/top_level.txt
-cals/__init__.py
-cals/calc_s.py
