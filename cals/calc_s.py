@@ -413,7 +413,7 @@ class CaIISindex:
 
 
 if __name__ == '__main__':
-    pass
+    #pass
     data_path = "example.fits"
     example = CaIISindex(data_path)
     example.stellar_parameters = ['5534.22','4.423','-0.025']
