@@ -135,9 +135,9 @@ class CaIISindex:
         S_rec = (H_mean_rec+K_mean_rec)/(R_mean+V_mean)
         S_tri = (H_mean_tri+K_mean_tri)/(R_mean+V_mean)
         S_MWL = 8*1.8*1.09/20.*(H_mean_tri+K_mean_tri)/(R_mean+V_mean)
-        self.S_info = [R_mean,V_mean,H_mean_tri,K_mean_tri,S_tri,S_MWL,H_mean_rec,K_mean_rec,S_rec]
-        para_dict = dict(zip(self.para_catalog[::2][:-1],self.S_info))
-        return para_dict
+        S_info = [R_mean,V_mean,H_mean_tri,K_mean_tri,S_tri,S_MWL,H_mean_rec,K_mean_rec,S_rec]
+        self.para_dict = dict(zip(self.para_catalog[::2][:-1],S_info))
+        return self.para_dict
 
     def __getOrigError(self):
         original_error = []
@@ -188,10 +188,10 @@ class CaIISindex:
         self.S_info_err[3] = K_tri_err
         if -9999 not in [self.S_info_err[0],self.S_info_err[1],self.S_info_err[5],self.S_info_err[6]]:
             RV_err = math.sqrt(self.S_info_err[0]**2+self.S_info_err[1]**2)
-            RV_err = RV_err/(self.S_info[0]+self.S_info[1])
+            RV_err = RV_err/(self.para_dict['R_mean']+self.para_dict['V_mean'])
             HK_tri_err = math.sqrt(H_tri_err**2+K_tri_err**2)
-            HK_tri_err = HK_tri_err/(self.S_info[5]+self.S_info[6])
-            S_tri_err = self.S_info[7]*math.sqrt(RV_err**2+HK_tri_err**2)
+            HK_tri_err = HK_tri_err/(self.para_dict['H_mean_tri']+self.para_dict['K_mean_tri'])
+            S_tri_err = self.para_dict['S_tri']*math.sqrt(RV_err**2+HK_tri_err**2)
             S_MWL_err = S_tri_err*8*1.8*1.09/20.
         else:
             S_tri_err=-9999
@@ -218,10 +218,10 @@ class CaIISindex:
         self.S_info_err[7] = K_rec_err
         if -9999 not in self.S_info_err[0:4]:
             RV_err = math.sqrt(self.S_info_err[0]**2+self.S_info_err[0]**2)
-            RV_err = RV_err/(self.S_info[0]+self.S_info[1])
+            RV_err = RV_err/(self.para_dict['R_mean']+self.para_dict['V_mean'])
             HK_rec_err = math.sqrt(H_rec_err**2+K_rec_err**2)
-            HK_rec_err = HK_rec_err/(self.S_info[2]+self.S_info[3])
-            S_rec_err = self.S_info[4]*math.sqrt(RV_err**2+HK_rec_err**2)
+            HK_rec_err = HK_rec_err/(self.para_dict['H_mean_rec']+self.para_dict['K_mean_rec'])
+            S_rec_err = self.para_dict['S_rec']*math.sqrt(RV_err**2+HK_rec_err**2)
         else:
             S_rec_err=-9999
         self.S_info_err[8] = S_rec_err
@@ -245,7 +245,7 @@ class CaIISindex:
         
         self.calcSindex()
         original_error = self.__getOrigError()
-        self.S_info_err = len(self.S_info)*[0]
+        self.S_info_err = len(self.para_dict)*[0]
         self.__calc_RV_err()    
         self.__calc_HK_tri_err()
         self.__calc_HK_rec_err()
@@ -258,7 +258,7 @@ class CaIISindex:
             condition_tag = ' '
         else:
             condition_tag = 'uncertainty=-9999'
-        S_info = ['{:.6f}'.format(i) for i in self.S_info]
+        S_info = ['{:.6f}'.format(value) for key,value in self.para_dict.items()]
         S_info_err = ['{:.6f}'.format(i) for i in self.S_info_err]
         new_info = []
         for i in range(len(S_info)):
