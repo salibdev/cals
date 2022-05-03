@@ -44,6 +44,7 @@ class CaIISindex:
     L_V = 3902.17
     step1 = 0.01
     step2 = 0.001
+    FWHM = 1.09
     para_catalog = ['R_mean','R_mean_err','V_mean','V_mean_err',
              	'H_mean_tri','H_mean_tri_err','K_mean_tri','K_mean_tri_err','S_tri','S_tri_err',
          	'S_MWL','S_MWL_err',
@@ -62,26 +63,24 @@ class CaIISindex:
         self.__prework()
         self.__loadData(path)
 
-    def rec_band(self,band_center,band_width,step):
+    def wave_band(self,band_center,band_width,step):
         rec_band = np.arange(band_center-band_width/2+0.5*step,band_center+band_width/2,step)
         return rec_band
 
-    def tri_band(self,band_center,FWHM,step):
-        tri_band = np.arange(band_center-FWHM+0.5*step,band_center+FWHM,step)
-        return tri_band
-    
-    def __prework(self,):
-        #make rectangular bandpass
-        self.band_V = self.rec_band(band_center=self.L_V, band_width=20, step=self.step1)
-        self.band_R = self.rec_band(band_center=self.L_R, band_width=20, step=self.step1)
-        self.band_K = self.rec_band(band_center=self.L_K, band_width=1 , step=self.step2)
-        self.band_H = self.rec_band(band_center=self.L_H, band_width=1 , step=self.step2)
-        #make triangular bandpass
-        self.band_tri_K = self.tri_band(band_center=self.L_K, FWHM=1.09, step=self.step2)
-        self.band_tri_H = self.tri_band(band_center=self.L_H, FWHM=1.09, step=self.step2)
-        #other used bandpass
-        tem_tri = list(np.arange(self.step2/1.09/2,1,self.step2/1.09))
-        self.trig = tem_tri+tem_tri[::-1]
+    def tri_func(self,step):
+        tem_tri = list(np.arange(step/self.FWHM/2,1,step/self.FWHM))
+        trig = tem_tri+tem_tri[::-1]
+        return trig
+        
+    def __prework(self):    
+        self.band_V = self.wave_band(band_center=self.L_V, band_width=20, step=self.step1)
+        self.band_R = self.wave_band(band_center=self.L_R, band_width=20, step=self.step1)
+        self.band_K = self.wave_band(band_center=self.L_K, band_width=1 , step=self.step2)
+        self.band_H = self.wave_band(band_center=self.L_H, band_width=1 , step=self.step2)
+        self.band_tri_K = self.wave_band(band_center=self.L_K, band_width=self.FWHM*2, step=self.step2)
+        self.band_tri_H = self.wave_band(band_center=self.L_H, band_width=self.FWHM*2, step=self.step2)
+
+        self.trig = self.tri_func(self.step2)
     
     def __loadData(self,path,printname=False):
         fitsdata = fits.open(path)
@@ -102,11 +101,11 @@ class CaIISindex:
         self.wavelen = self.spec[2][self.begin_index:self.end_index]
 
         self.wave_z = [i/(1+float(self.specdata.header['Z'])) for i in self.wavelen]
-        self.func = scipy.interpolate.interp1d(self.wave_z,self.flux,kind='linear')
+        self.flux_func = scipy.interpolate.interp1d(self.wave_z,self.flux,kind='linear')
         return self.specdata
 
     def __calc_trig(self,x):
-        y = self.func(x)
+        y = self.flux_func(x)
         newy = [y[i]*self.trig[i] for i in range(len(y))]
         total = sum(newy)*self.step2
         return total/1.09
@@ -127,10 +126,10 @@ class CaIISindex:
                     }
         
         '''
-        R_mean = sum(self.func(self.band_R))*self.step1/20. 
-        V_mean = sum(self.func(self.band_V))*self.step1/20.
-        H_mean_rec = sum(self.func(self.band_H))*self.step2/1.
-        K_mean_rec = sum(self.func(self.band_K))*self.step2/1.
+        R_mean = sum(self.flux_func(self.band_R))*self.step1/20. 
+        V_mean = sum(self.flux_func(self.band_V))*self.step1/20.
+        H_mean_rec = sum(self.flux_func(self.band_H))*self.step2/1.
+        K_mean_rec = sum(self.flux_func(self.band_K))*self.step2/1.
         H_mean_tri = self.__calc_trig(self.band_tri_H)
         K_mean_tri = self.__calc_trig(self.band_tri_K)
         S_rec = (H_mean_rec+K_mean_rec)/(R_mean+V_mean)
@@ -140,6 +139,18 @@ class CaIISindex:
         para_dict = dict(zip(self.para_catalog[::2][:-1],self.S_info))
         return para_dict
 
+    def __getOrigError(self):
+        original_error = []
+        for i in range(len(self.error)):
+            if self.error[i]!=0:
+                original_error.append(math.sqrt(1/self.error[i]))
+            else:
+                original_error.append(0)
+        orig_error_bin = [2/(self.wave_z[i+1]-self.wave_z[i-1]) for i in range(1,len(self.wave_z)-1)]
+        orig_error_bin = [1/(self.wave_z[1]-self.wave_z[0])]+orig_error_bin+[1/(self.wave_z[-2]-self.wave_z[-1])]
+        self.f_bin = scipy.interpolate.interp1d(self.wave_z,orig_error_bin,kind='linear')
+        self.f_err = scipy.interpolate.interp1d(self.wave_z,original_error,kind='linear')
+    
     def __calc_RV_err(self):
         R_err_list = self.f_err(self.band_R)
         V_err_list = self.f_err(self.band_V)
@@ -215,18 +226,6 @@ class CaIISindex:
             S_rec_err=-9999
         self.S_info_err[8] = S_rec_err
 
-    def __getOrigError(self):
-        original_error = []
-        for i in range(len(self.error)):
-            if self.error[i]!=0:
-                original_error.append(math.sqrt(1/self.error[i]))
-            else:
-                original_error.append(0)
-        orig_error_bin = [2/(self.wave_z[i+1]-self.wave_z[i-1]) for i in range(1,len(self.wave_z)-1)]
-        orig_error_bin = [1/(self.wave_z[1]-self.wave_z[0])]+orig_error_bin+[1/(self.wave_z[-2]-self.wave_z[-1])]
-        self.f_bin = scipy.interpolate.interp1d(self.wave_z,orig_error_bin,kind='linear')
-        self.f_err = scipy.interpolate.interp1d(self.wave_z,original_error,kind='linear')
-
     def calcError(self):
         '''
         
@@ -285,7 +284,7 @@ class CaIISindex:
         plt.figure(figsize=(14,7))
         ax1 = plt.gca()
         all_band = np.arange(self.L_V-10,self.L_R+10,self.step1)
-        plot_flux = self.func(all_band)
+        plot_flux = self.flux_func(all_band)
         fig1 = ax1.plot(all_band,plot_flux/max(plot_flux),color='red',label='shifted',linewidth='1.5')
         ax1.plot([self.L_V-10,self.L_R+10],[1,1],linestyle='--',color='black')
         ax2 = ax1.twinx()
