@@ -298,8 +298,8 @@ class CaIISindex:
         fig1 = ax1.plot(self.all_band,plot_flux/max(plot_flux),color='red',label='shifted',linewidth='1.5')
         ax1.plot([self.L_V-10,self.L_R+10],[1,1],linestyle='--',color='black')
         ax2 = ax1.twinx()
-        fig2 = ax2.plot(self.wavelen,self.flux,label='original',linewidth='1.5',linestyle='-.')
-        c1 = 'lime'
+        fig2 = ax2.plot(self.wavelen,self.flux,label='original',linewidth='1.5',linestyle='-.',color='blue')
+        c1 = 'gray'
         ax1.fill_between([self.L_R-10,self.L_R+10],[1,1],[0,0],color=c1)
         ax1.fill_between([self.L_V-10,self.L_V+10],[1,1],[0,0],color=c1)
         ax1.fill_between( [self.L_H-1,self.L_H+1], [1,1],[0,0],color=c1)
