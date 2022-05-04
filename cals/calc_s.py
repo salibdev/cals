@@ -80,7 +80,8 @@ class CaIISindex:
         self.band_H = self.wave_band(band_center=self.L_H, band_width=1 , step=self.step2)
         self.band_tri_K = self.wave_band(band_center=self.L_K, band_width=self.FWHM*2, step=self.step2)
         self.band_tri_H = self.wave_band(band_center=self.L_H, band_width=self.FWHM*2, step=self.step2)
-
+        self.all_band = np.arange(self.L_V-10,self.L_R+10,self.step1)
+        
         self.trig = self.tri_func(self.step2)
     
     def __loadData(self,path,printname=False):
@@ -273,7 +274,7 @@ class CaIISindex:
         new_info = []
         for i in range(len(S_info)):
             new_info+=[S_info[i],S_info_err[i]]
-        new_info += condition_tag
+        new_info += [condition_tag]
         return new_info
     
     def __recordSErr(self,new_info,header=True):
@@ -293,9 +294,8 @@ class CaIISindex:
         plt.rcParams['ytick.direction'] = 'in'
         plt.figure(figsize=(14,7))
         ax1 = plt.gca()
-        all_band = np.arange(self.L_V-10,self.L_R+10,self.step1)
-        plot_flux = self.flux_func(all_band)
-        fig1 = ax1.plot(all_band,plot_flux/max(plot_flux),color='red',label='shifted',linewidth='1.5')
+        plot_flux = self.flux_func(self.all_band)
+        fig1 = ax1.plot(self.all_band,plot_flux/max(plot_flux),color='red',label='shifted',linewidth='1.5')
         ax1.plot([self.L_V-10,self.L_R+10],[1,1],linestyle='--',color='black')
         ax2 = ax1.twinx()
         fig2 = ax2.plot(self.wavelen,self.flux,label='original',linewidth='1.5',linestyle='-.')
