@@ -418,12 +418,9 @@ class CaIISindex:
 
 
 if __name__ == '__main__':
-    #pass
+    pass
     data_path = "example.fits"
-    #data_path = "dev_test/dev_test.fits"
     cs = CaIISindex(data_path)
-    #cs.Sindex_savepath = 'dev_test/S_index_dev_test.csv'               # set csv file save path
-    #cs.figure_savepath = 'dev_test/dev_test.png'                       # set figure file save path
     cs.stellar_parameters = ['5534.22','4.423','-0.025']
     cs.saveRecord()
     
