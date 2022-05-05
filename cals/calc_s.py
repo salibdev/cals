@@ -299,20 +299,14 @@ class CaIISindex:
         ax1.plot([self.L_V-10,self.L_R+10],[1,1],linestyle='--',color='black')
         ax2 = ax1.twinx()
         fig2 = ax2.plot(self.wavelen,self.flux,label='original',linewidth='1.5',linestyle='-.',color='blue')
-        c1 = 'gray'
-        ax1.fill_between([self.L_R-10,self.L_R+10],[1,1],[0,0],color=c1)
-        ax1.fill_between([self.L_V-10,self.L_V+10],[1,1],[0,0],color=c1)
-        ax1.fill_between( [self.L_H-1,self.L_H+1], [1,1],[0,0],color=c1)
-        ax1.fill_between( [self.L_K-1,self.L_K+1], [1,1],[0,0],color=c1)
-
-        #ax1.plot([self.L_H-self.FWHM,self.L_H],[0,1],color='lime',linestyle='--')
-        #ax1.plot([self.L_H,self.L_H+self.FWHM],[1,0],color='lime',linestyle='--')
-        #ax1.plot([self.L_K-self.FWHM,self.L_K],[0,1],color='lime',linestyle='--')
-        #ax1.plot([self.L_K,self.L_K+self.FWHM],[1,0],color='lime',linestyle='--')
-        #ax1.fill_between(self.band_tri_H,self.trig,[0]*len(self.trig),color='lime')
-        #ax1.fill_between(self.band_tri_K,self.trig,[0]*len(self.trig),color='lime')
-        ax1.fill_between([self.L_H-self.FWHM,self.L_H,self.L_H+self.FWHM],[0,0,0],[0,1,0],color='orange')
-        ax1.fill_between([self.L_K-self.FWHM,self.L_K,self.L_K+self.FWHM],[0,0,0],[0,1,0],color='orange')
+        rec_color = 'lime'
+        ax1.fill_between([self.L_R-10,self.L_R+10],[1,1],[0,0],color=rec_color)
+        ax1.fill_between([self.L_V-10,self.L_V+10],[1,1],[0,0],color=rec_color)
+        ax1.fill_between( [self.L_H-1,self.L_H+1], [1,1],[0,0],color=rec_color)
+        ax1.fill_between( [self.L_K-1,self.L_K+1], [1,1],[0,0],color=rec_color)
+        tri_color = 'yellow'
+        ax1.fill_between([self.L_H-self.FWHM,self.L_H,self.L_H+self.FWHM],[0,0,0],[0,1,0],color=tri_color)
+        ax1.fill_between([self.L_K-self.FWHM,self.L_K,self.L_K+self.FWHM],[0,0,0],[0,1,0],color=tri_color)
         
         ax1.plot([self.L_H,self.L_H],[0,1],color='black',linestyle='--')
         ax1.plot([self.L_K,self.L_K],[0,1],color='black',linestyle='--')
@@ -425,10 +419,10 @@ if __name__ == '__main__':
     #pass
     data_path = "example.fits"
     #data_path = "dev_test/dev_test.fits"
-    example = CaIISindex(data_path)
-    #example.Sindex_savepath = 'dev_test/S_index_dev_test.csv'               # set csv file save path
-    #example.figure_savepath = 'dev_test/dev_test.png'                       # set figure file save path
-    example.stellar_parameters = ['5534.22','4.423','-0.025']
-    example.saveRecord()
+    cs = CaIISindex(data_path)
+    #cs.Sindex_savepath = 'dev_test/S_index_dev_test.csv'               # set csv file save path
+    #cs.figure_savepath = 'dev_test/dev_test.png'                       # set figure file save path
+    cs.stellar_parameters = ['5534.22','4.423','-0.025']
+    cs.saveRecord()
     
 
