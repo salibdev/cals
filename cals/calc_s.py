@@ -47,10 +47,10 @@ class CaIISindex:
     FWHM = 1.09
     alpha = 1.8
     para_catalog = ('R_mean','R_mean_err','V_mean','V_mean_err',
-             	'H_mean_tri','H_mean_tri_err','K_mean_tri','K_mean_tri_err','S_tri','S_tri_err',
-         	'S_MWL','S_MWL_err',
-         	'H_mean_rec','H_mean_rec_err','K_mean_rec','K_mean_rec_err','S_rec','S_rec_err',
-		'condition_tag')
+                    'H_mean_rec','H_mean_rec_err','K_mean_rec','K_mean_rec_err','S_rec','S_rec_err',
+             	    'H_mean_tri','H_mean_tri_err','K_mean_tri','K_mean_tri_err','S_tri','S_tri_err',
+         	    'S_MWL','S_MWL_err',
+                    'condition_tag')
     begin_index = 0
     end_index = None
 
@@ -118,13 +118,13 @@ class CaIISindex:
         Return a dict of stellar activity parameters:
         para_dict = {'R_mean':R_mean,           # mean flux of 20Å R band
                      'V_mean':V_mean,           # mean flux of 20Å V band
+                     'H_mean_rec':H_mean_rec,   # mean flux of H line in 1Å rectangular bandpass
+                     'K_mean_rec':K_mean_rec,   # mean flux of K line in 1Å rectangular bandpass
+                     'S_rec':S_rec,             # S index using 1Å rectangular bandpass
                      'H_mean_tri':H_mean_tri,   # mean flux of H line in self.FWHMÅ FWHM triangular bandpass
                      'K_mean_tri':K_mean_tri,   # mean flux of K line in self.FWHMÅ FWHM triangular bandpass
                      'S_tri':S_tri,             # S index using self.FWHMÅ FWHM triangular bandpass
                      'S_MWL':S_MWL                # Mount Wilson S index
-                     'H_mean_rec':H_mean_rec,   # mean flux of H line in 1Å rectangular bandpass
-                     'K_mean_rec':K_mean_rec,   # mean flux of K line in 1Å rectangular bandpass
-                     'S_rec':S_rec,             # S index using 1Å rectangular bandpass
                     }
         
         '''
@@ -137,7 +137,7 @@ class CaIISindex:
         S_rec = (H_mean_rec+K_mean_rec)/(R_mean+V_mean)
         S_tri = (H_mean_tri+K_mean_tri)/(R_mean+V_mean)
         S_MWL = 8*self.alpha*self.FWHM/20.*(H_mean_tri+K_mean_tri)/(R_mean+V_mean)
-        S_info = [R_mean,V_mean,H_mean_tri,K_mean_tri,S_tri,S_MWL,H_mean_rec,K_mean_rec,S_rec]
+        S_info = [R_mean,V_mean,H_mean_rec,K_mean_rec,S_rec,H_mean_tri,K_mean_tri,S_tri,S_MWL]
         self.para_dict = dict(zip(self.para_catalog[::2][:-1],S_info))
         return self.para_dict
 
@@ -237,14 +237,14 @@ class CaIISindex:
         
         Return a dictionary of activity parameter errors:
         para_err_dict = {'R_mean_err':R_mean_err, 
-                         'V_mean_err':V_mean_err, 
+                         'V_mean_err':V_mean_err,
+                         'H_mean_rec_err':H_mean_rec_err, 
+                         'K_mean_rec_err':K_mean_rec_err, 
+                         'S_rec_err':S_rec_err
                          'H_mean_tri_err':H_mean_tri_err, 
                          'K_mean_tri_err':K_mean_tri_err,
                          'S_tri_err':S_tri_err, 
                          'S_MWL_err':S_MWL_err,
-                         'H_mean_rec_err':H_mean_rec_err, 
-                         'K_mean_rec_err':K_mean_rec_err, 
-                         'S_rec_err':S_rec_err
                         }
         
         '''
@@ -252,13 +252,14 @@ class CaIISindex:
         self.calcSindex()
         original_error = self.__getOrigError()
 
-        R_err,V_err = self.__calc_RV_err()    
-        H_tri_err,K_tri_err = self.__calc_HK_tri_err()
-        S_tri_err,S_MWL_err = self.__calc_S_tri_err(R_err,V_err,H_tri_err,K_tri_err)
+        R_err,V_err = self.__calc_RV_err()
         H_rec_err,K_rec_err = self.__calc_HK_rec_err()
         S_rec_err = self.__calc_S_rec_err(R_err,V_err,H_rec_err,K_rec_err)
+        H_tri_err,K_tri_err = self.__calc_HK_tri_err()
+        S_tri_err,S_MWL_err = self.__calc_S_tri_err(R_err,V_err,H_tri_err,K_tri_err)
+
         
-        S_info_err = [R_err,V_err,H_tri_err,K_tri_err,S_tri_err,S_MWL_err,H_rec_err,K_rec_err,S_rec_err]
+        S_info_err = [R_err,V_err,H_rec_err,K_rec_err,S_rec_err,H_tri_err,K_tri_err,S_tri_err,S_MWL_err]
         para_dict_err = dict(zip(self.para_catalog[1::2],S_info_err))
         return para_dict_err
 
@@ -299,22 +300,23 @@ class CaIISindex:
         ax1.plot([self.L_V-10,self.L_R+10],[1,1],linestyle='--',color='black')
         ax2 = ax1.twinx()
         fig2 = ax2.plot(self.wavelen,self.flux,label='original',linewidth='1.5',linestyle='-.',color='blue')
-        rec_color = 'lime'
-        ax1.fill_between([self.L_R-10,self.L_R+10],[1,1],[0,0],color=rec_color)
-        ax1.fill_between([self.L_V-10,self.L_V+10],[1,1],[0,0],color=rec_color)
-        ax1.fill_between( [self.L_H-1,self.L_H+1], [1,1],[0,0],color=rec_color)
-        ax1.fill_between( [self.L_K-1,self.L_K+1], [1,1],[0,0],color=rec_color)
-        tri_color = 'yellow'
+
+        tri_color = 'lime'
         ax1.fill_between([self.L_H-self.FWHM,self.L_H,self.L_H+self.FWHM],[0,0,0],[0,1,0],color=tri_color)
         ax1.fill_between([self.L_K-self.FWHM,self.L_K,self.L_K+self.FWHM],[0,0,0],[0,1,0],color=tri_color)
-        
+        rec_color = 'yellow'
+        ax1.fill_between([self.L_R-10,self.L_R+10],  [1,1],[0,0],color=rec_color)
+        ax1.fill_between([self.L_V-10,self.L_V+10],  [1,1],[0,0],color=rec_color)
+        ax1.fill_between([self.L_H-1/2,self.L_H+1/2],[1,1],[0,0],color=rec_color)
+        ax1.fill_between([self.L_K-1/2,self.L_K+1/2],[1,1],[0,0],color=rec_color)
+
         ax1.plot([self.L_H,self.L_H],[0,1],color='black',linestyle='--')
         ax1.plot([self.L_K,self.L_K],[0,1],color='black',linestyle='--')
 
         ax1.annotate("Ca II H "+str(self.L_H)+r'$\,$'+u'\u00C5',xy=(self.L_H,0.1),xytext=(self.L_H+4,0.15),
-                color="black",weight="bold",fontsize=11,arrowprops=dict(arrowstyle="->",color="black"))
+                color="blue",weight="bold",fontsize=11,arrowprops=dict(arrowstyle="->",color="blue"))
         ax1.annotate("Ca II K "+str(self.L_K)+r'$\,$'+u'\u00C5',xy=(self.L_K,0.1),xytext=(self.L_K+4,0.15),
-                color="black",weight="bold",fontsize=11,arrowprops=dict(arrowstyle="->",color="black"))
+                color="blue",weight="bold",fontsize=11,arrowprops=dict(arrowstyle="->",color="blue"))
         ax2.legend(handles=fig1+fig2,loc='upper left',fontsize='15')
         ax2.set_ylim(0,max(plot_flux)*1.2)
         return ax1,ax2
