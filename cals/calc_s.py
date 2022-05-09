@@ -47,9 +47,9 @@ class CaIISindex:
     FWHM = 1.09
     alpha = 1.8
     para_catalog = ('R_mean','R_mean_err','V_mean','V_mean_err',
-                    'H_mean_rec','H_mean_rec_err','K_mean_rec','K_mean_rec_err','S_rec','S_rec_err',
              	    'H_mean_tri','H_mean_tri_err','K_mean_tri','K_mean_tri_err','S_tri','S_tri_err',
          	    'S_MWL','S_MWL_err',
+                    'H_mean_rec','H_mean_rec_err','K_mean_rec','K_mean_rec_err','S_rec','S_rec_err',
                     'condition_tag')
     begin_index = 0
     end_index = None
@@ -61,6 +61,7 @@ class CaIISindex:
 
         '''
         self.path = path
+        self.all_para_dict = dict(zip(self.para_catalog,[0]*len(self.para_catalog)))
         self.__prework()
         self.__loadData(path)
 
@@ -118,13 +119,13 @@ class CaIISindex:
         Return a dict of stellar activity parameters:
         para_dict = {'R_mean':R_mean,           # mean flux of 20Å R band
                      'V_mean':V_mean,           # mean flux of 20Å V band
-                     'H_mean_rec':H_mean_rec,   # mean flux of H line in 1Å rectangular bandpass
-                     'K_mean_rec':K_mean_rec,   # mean flux of K line in 1Å rectangular bandpass
-                     'S_rec':S_rec,             # S index using 1Å rectangular bandpass
                      'H_mean_tri':H_mean_tri,   # mean flux of H line in self.FWHMÅ FWHM triangular bandpass
                      'K_mean_tri':K_mean_tri,   # mean flux of K line in self.FWHMÅ FWHM triangular bandpass
                      'S_tri':S_tri,             # S index using self.FWHMÅ FWHM triangular bandpass
                      'S_MWL':S_MWL                # Mount Wilson S index
+                     'H_mean_rec':H_mean_rec,   # mean flux of H line in 1Å rectangular bandpass
+                     'K_mean_rec':K_mean_rec,   # mean flux of K line in 1Å rectangular bandpass
+                     'S_rec':S_rec,             # S index using 1Å rectangular bandpass
                     }
         
         '''
@@ -137,7 +138,18 @@ class CaIISindex:
         S_rec = (H_mean_rec+K_mean_rec)/(R_mean+V_mean)
         S_tri = (H_mean_tri+K_mean_tri)/(R_mean+V_mean)
         S_MWL = 8*self.alpha*self.FWHM/20.*(H_mean_tri+K_mean_tri)/(R_mean+V_mean)
-        S_info = [R_mean,V_mean,H_mean_rec,K_mean_rec,S_rec,H_mean_tri,K_mean_tri,S_tri,S_MWL]
+
+        self.all_para_dict['R_mean'] = R_mean
+        self.all_para_dict['V_mean'] = V_mean
+        self.all_para_dict['H_mean_rec'] = H_mean_rec
+        self.all_para_dict['K_mean_rec'] = K_mean_rec
+        self.all_para_dict['H_mean_tri'] = H_mean_tri
+        self.all_para_dict['K_mean_tri'] = K_mean_tri
+        self.all_para_dict['S_rec'] = S_rec
+        self.all_para_dict['S_tri'] = S_tri
+        self.all_para_dict['S_MWL'] = S_MWL
+        
+        S_info = [self.all_para_dict[i] for i in self.para_catalog[::2][:-1]]
         self.para_dict = dict(zip(self.para_catalog[::2][:-1],S_info))
         return self.para_dict
 
@@ -159,17 +171,17 @@ class CaIISindex:
         R_bin_list = self.f_bin(self.band_R)
         V_bin_list = self.f_bin(self.band_V)
         if min(R_err_list)<=0:
-            R_err = -9999
+            R_mean_err = -9999
         else:
             tem_err = [R_err_list[i]**2/self.step1/R_bin_list[i] for i in range(len(R_err_list))]
-            R_err = math.sqrt(sum(tem_err))*self.step1/20.
+            R_mean_err = math.sqrt(sum(tem_err))*self.step1/20.
         if min(V_err_list)<=0:
-            V_err = -9999
+            V_mean_err = -9999
         else:
             tem_err = [V_err_list[i]**2/self.step1/V_bin_list[i] for i in range(len(V_err_list))]
-            V_err = math.sqrt(sum(tem_err))*self.step1/20.
+            V_mean_err = math.sqrt(sum(tem_err))*self.step1/20.
 
-        return R_err,V_err
+        return R_mean_err,V_mean_err
 
     def __calc_HK_tri_err(self):
         H_err_list = self.f_err(self.band_tri_H)
@@ -178,23 +190,23 @@ class CaIISindex:
         K_bin_list = self.f_bin(self.band_tri_K)
         
         if min(H_err_list)<=0:
-            H_tri_err = -9999
+            H_mean_tri_err = -9999
         else:
             tem_err = [H_err_list[i]**2/self.step2/H_bin_list[i]*self.trig[i]**2 for i in range(len(H_err_list))]
-            H_tri_err = math.sqrt(sum(tem_err))*self.step2/self.FWHM
+            H_mean_tri_err = math.sqrt(sum(tem_err))*self.step2/self.FWHM
         if min(K_err_list)<=0:
-            K_tri_err = -9999
+            K_mean_tri_err = -9999
         else:
             tem_err = [K_err_list[i]**2/self.step2/K_bin_list[i]*self.trig[i]**2 for i in range(len(K_err_list))]
-            K_tri_err = math.sqrt(sum(tem_err))*self.step2/self.FWHM
-        return H_tri_err,K_tri_err
+            K_mean_tri_err = math.sqrt(sum(tem_err))*self.step2/self.FWHM
+        return H_mean_tri_err,K_mean_tri_err
 
-    def __calc_S_tri_err(self,R_err,V_err,H_tri_err,K_tri_err):
+    def __calc_S_tri_err(self,R_mean_err,V_mean_err,H_mean_tri_err,K_mean_tri_err):
 
-        if -9999 not in [R_err,V_err,H_tri_err,K_tri_err]:
-            RV_err = math.sqrt(R_err**2+V_err**2)
+        if -9999 not in [R_mean_err,V_mean_err,H_mean_tri_err,K_mean_tri_err]:
+            RV_err = math.sqrt(R_mean_err**2+V_mean_err**2)
             RV_err = RV_err/(self.para_dict['R_mean']+self.para_dict['V_mean'])
-            HK_tri_err = math.sqrt(H_tri_err**2+K_tri_err**2)
+            HK_tri_err = math.sqrt(H_mean_tri_err**2+K_mean_tri_err**2)
             HK_tri_err = HK_tri_err/(self.para_dict['H_mean_tri']+self.para_dict['K_mean_tri'])
             S_tri_err = self.para_dict['S_tri']*math.sqrt(RV_err**2+HK_tri_err**2)
             S_MWL_err = S_tri_err*8*self.alpha*self.FWHM/20.
@@ -210,22 +222,22 @@ class CaIISindex:
         H_bin_list = self.f_bin(self.band_H)
         K_bin_list = self.f_bin(self.band_K)
         if min(H_err_list)<=0:
-            H_rec_err = -9999
+            H_mean_rec_err = -9999
         else:
             tem_err = [H_err_list[i]**2/self.step2/H_bin_list[i] for i in range(len(H_err_list))]
-            H_rec_err = math.sqrt(sum(tem_err))*self.step2/1.
+            H_mean_rec_err = math.sqrt(sum(tem_err))*self.step2/1.
         if min(K_err_list)<=0:
-            K_rec_err = -9999
+            K_mean_rec_err = -9999
         else:
             tem_err = [K_err_list[i]**2/self.step2/K_bin_list[i] for i in range(len(K_err_list))]
-            K_rec_err = math.sqrt(sum(tem_err))*self.step2/1.
-        return H_rec_err,K_rec_err
+            K_mean_rec_err = math.sqrt(sum(tem_err))*self.step2/1.
+        return H_mean_rec_err,K_mean_rec_err
 
-    def __calc_S_rec_err(self,R_err,V_err,H_rec_err,K_rec_err):
-        if -9999 not in [R_err,V_err,H_rec_err,K_rec_err]:
-            RV_err = math.sqrt(R_err**2+V_err**2)
+    def __calc_S_rec_err(self,R_mean_err,V_mean_err,H_mean_rec_err,K_mean_rec_err):
+        if -9999 not in [R_mean_err,V_mean_err,H_mean_rec_err,K_mean_rec_err]:
+            RV_err = math.sqrt(R_mean_err**2+V_mean_err**2)
             RV_err = RV_err/(self.para_dict['R_mean']+self.para_dict['V_mean'])
-            HK_rec_err = math.sqrt(H_rec_err**2+K_rec_err**2)
+            HK_rec_err = math.sqrt(H_mean_rec_err**2+K_mean_rec_err**2)
             HK_rec_err = HK_rec_err/(self.para_dict['H_mean_rec']+self.para_dict['K_mean_rec'])
             S_rec_err = self.para_dict['S_rec']*math.sqrt(RV_err**2+HK_rec_err**2)
         else:
@@ -238,13 +250,13 @@ class CaIISindex:
         Return a dictionary of activity parameter errors:
         para_err_dict = {'R_mean_err':R_mean_err, 
                          'V_mean_err':V_mean_err,
-                         'H_mean_rec_err':H_mean_rec_err, 
-                         'K_mean_rec_err':K_mean_rec_err, 
-                         'S_rec_err':S_rec_err
                          'H_mean_tri_err':H_mean_tri_err, 
                          'K_mean_tri_err':K_mean_tri_err,
                          'S_tri_err':S_tri_err, 
                          'S_MWL_err':S_MWL_err,
+                         'H_mean_rec_err':H_mean_rec_err, 
+                         'K_mean_rec_err':K_mean_rec_err, 
+                         'S_rec_err':S_rec_err
                         }
         
         '''
@@ -252,14 +264,23 @@ class CaIISindex:
         self.calcSindex()
         original_error = self.__getOrigError()
 
-        R_err,V_err = self.__calc_RV_err()
-        H_rec_err,K_rec_err = self.__calc_HK_rec_err()
-        S_rec_err = self.__calc_S_rec_err(R_err,V_err,H_rec_err,K_rec_err)
-        H_tri_err,K_tri_err = self.__calc_HK_tri_err()
-        S_tri_err,S_MWL_err = self.__calc_S_tri_err(R_err,V_err,H_tri_err,K_tri_err)
+        R_mean_err,V_mean_err = self.__calc_RV_err()
+        H_mean_rec_err,K_mean_rec_err = self.__calc_HK_rec_err()
+        S_rec_err = self.__calc_S_rec_err(R_mean_err,V_mean_err,H_mean_rec_err,K_mean_rec_err)
+        H_mean_tri_err,K_mean_tri_err = self.__calc_HK_tri_err()
+        S_tri_err,S_MWL_err = self.__calc_S_tri_err(R_mean_err,V_mean_err,H_mean_tri_err,K_mean_tri_err)
 
+        self.all_para_dict['R_mean_err'] = R_mean_err
+        self.all_para_dict['V_mean_err'] = V_mean_err
+        self.all_para_dict['H_mean_rec_err'] = H_mean_rec_err
+        self.all_para_dict['K_mean_rec_err'] = K_mean_rec_err
+        self.all_para_dict['H_mean_tri_err'] = H_mean_tri_err
+        self.all_para_dict['K_mean_tri_err'] = K_mean_tri_err
+        self.all_para_dict['S_rec_err'] = S_rec_err
+        self.all_para_dict['S_tri_err'] = S_tri_err
+        self.all_para_dict['S_MWL_err'] = S_MWL_err
         
-        S_info_err = [R_err,V_err,H_rec_err,K_rec_err,S_rec_err,H_tri_err,K_tri_err,S_tri_err,S_MWL_err]
+        S_info_err = [self.all_para_dict[i] for i in self.para_catalog[1::2]]
         para_dict_err = dict(zip(self.para_catalog[1::2],S_info_err))
         return para_dict_err
 
@@ -267,15 +288,15 @@ class CaIISindex:
         para_dict_err = self.calcError()
         S_info_err = [para_dict_err[key] for key in para_dict_err]
         if -9999 not in S_info_err:
-            condition_tag = ' '
+            self.all_para_dict['condition_tag'] = ' '
         else:
-            condition_tag = 'uncertainty=-9999'
+            self.all_para_dict['condition_tag'] = 'uncertainty=-9999'
         S_info = ['{:.6f}'.format(value) for key,value in self.para_dict.items()]
         S_info_err = ['{:.6f}'.format(i) for i in S_info_err]
         new_info = []
         for i in range(len(S_info)):
             new_info+=[S_info[i],S_info_err[i]]
-        new_info += [condition_tag]
+        new_info += [self.all_para_dict['condition_tag']]
         return new_info
     
     def __recordSErr(self,new_info,header=True):
@@ -418,7 +439,7 @@ class CaIISindex:
 
 
 if __name__ == '__main__':
-    pass
+    #pass
     data_path = "example.fits"
     cs = CaIISindex(data_path)
     cs.stellar_parameters = ['5534.22','4.423','-0.025']
