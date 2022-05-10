@@ -71,13 +71,13 @@ Because the stellar parameters 'teff', 'logg', and 'feh' are not included in LAM
 
 `cs.calcSindex()`
 
-Return a dictionary of stellar activity parameters: `{'R_mean':R_mean, 'V_mean':V_mean, 'H_mean_rec':H_mean_rec,'K_mean_rec':K_mean_rec, 'S_rec':S_rec, 'H_mean_tri':H_mean_tri, 'K_mean_tri':K_mean_tri, 'S_tri':S_tri, 'S_MWL':S_MWL}`.
+Return a dictionary of stellar activity parameters: `{'R_mean':R_mean, 'V_mean':V_mean, 'H_mean_tri':H_mean_tri, 'K_mean_tri':K_mean_tri, 'S_tri':S_tri, 'S_MWL':S_MWL, 'H_mean_rec':H_mean_rec,'K_mean_rec':K_mean_rec, 'S_rec':S_rec}`.
 
 #### Calculate errors of stellar chromospheric activity parameters
 
 `cs.calcError()`
 
-Return a dictionary of activity parameter errors: `{'R_mean_err':R_mean_err, 'V_mean_err':V_mean_err, 'H_mean_rec_err':H_mean_rec_err, 'K_mean_rec_err':K_mean_rec_err, 'S_rec_err':S_rec_err, 'H_mean_tri_err':H_mean_tri_err, 'K_mean_tri_err':K_mean_tri_err, 'S_tri_err':S_tri_err, 'S_MWL_err':S_MWL_err}`.
+Return a dictionary of activity parameter errors: `{'R_mean_err':R_mean_err, 'V_mean_err':V_mean_err, 'H_mean_tri_err':H_mean_tri_err, 'K_mean_tri_err':K_mean_tri_err, 'S_tri_err':S_tri_err, 'S_MWL_err':S_MWL_err, 'H_mean_rec_err':H_mean_rec_err, 'K_mean_rec_err':K_mean_rec_err, 'S_rec_err':S_rec_err}`.
 
 #### Plot spectrum diagram
 
