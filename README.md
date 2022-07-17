@@ -121,7 +121,7 @@ optional arguments:
 #### terminal example
 
 ```
-cd example/
+cd cals/
 cals -c ./example/example.fits -sp ./example/
 ```
 
