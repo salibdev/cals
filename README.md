@@ -118,10 +118,12 @@ optional arguments:
 
 ```
 
-####terminal example
+#### terminal example
 
-`cd example/`
-`cals -c ./example/example.fits -sp ./example/`
+```
+cd example/
+cals -c ./example/example.fits -sp ./example/
+```
 
 
 
