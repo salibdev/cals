@@ -4,11 +4,14 @@
 
 import math
 import os
+import argparse
+import time
 
 import numpy as np
 from astropy.io import fits
 import scipy
 import scipy.interpolate
+import matplotlib
 import matplotlib.pyplot as plt
 from matplotlib.ticker import MultipleLocator
 
@@ -34,14 +37,17 @@ class CaIISindex:
     cals.saveRecord()                 # save calculated activity parameters to a csv file and spectrum diagram to a figure file
 
     '''
-
+    
+    save_path = ''
     figure_savepath = None
     Sindex_savepath = None
     stellar_parameters = ['unknown','unknown','unknown']
-    L_K = 3934.78
-    L_H = 3969.59
-    L_R = 4002.20
-    L_V = 3902.17
+
+    L_K = 3934.78   #wavelength in vacuum
+    L_H = 3969.59   #wavelength in vacuum
+    L_R = 4002.20   #wavelength in vacuum
+    L_V = 3902.17   #wavelength in vacuum
+
     step1 = 0.01
     step2 = 0.001
     FWHM = 1.09
@@ -49,22 +55,25 @@ class CaIISindex:
     para_catalog = ('R_mean','R_mean_err','V_mean','V_mean_err',
              	    'H_mean_tri','H_mean_tri_err','K_mean_tri','K_mean_tri_err','S_tri','S_tri_err',
          	    'S_MWL','S_MWL_err',
-                    'H_mean_rec','H_mean_rec_err','K_mean_rec','K_mean_rec_err','S_rec','S_rec_err',
-                    'condition_tag')
+                    'H_mean_rec','H_mean_rec_err','K_mean_rec','K_mean_rec_err','S_rec','S_rec_err')
+                    
     begin_index = 0
     end_index = None
+    interp_type = 'linear'
 
-    def __init__(self,path):
+    def __init__(self,path=False):
         '''
 
         Initialize the fits data path.
 
         '''
-        self.path = path
-        self.all_para_dict = dict(zip(self.para_catalog,[0]*len(self.para_catalog)))
-        self.__prework()
-        self.__loadData(path)
 
+        self.all_para_dict = dict(zip(self.para_catalog,['unknown']*len(self.para_catalog)))
+        self.__prework()
+        if path:
+            #self.path = path
+            self.__loadData(path)
+    
     def wave_band(self,band_center,band_width,step):
         rec_band = np.arange(band_center-band_width/2+0.5*step,band_center+band_width/2,step)
         return rec_band
@@ -77,15 +86,16 @@ class CaIISindex:
     def __prework(self):    
         self.band_V = self.wave_band(band_center=self.L_V, band_width=20, step=self.step1)
         self.band_R = self.wave_band(band_center=self.L_R, band_width=20, step=self.step1)
-        self.band_K = self.wave_band(band_center=self.L_K, band_width=1 , step=self.step2)
-        self.band_H = self.wave_band(band_center=self.L_H, band_width=1 , step=self.step2)
-        self.band_tri_K = self.wave_band(band_center=self.L_K, band_width=self.FWHM*2, step=self.step2)
-        self.band_tri_H = self.wave_band(band_center=self.L_H, band_width=self.FWHM*2, step=self.step2)
+        self.band_K_rec = self.wave_band(band_center=self.L_K, band_width=1, step=self.step2)
+        self.band_H_rec = self.wave_band(band_center=self.L_H, band_width=1, step=self.step2)
+        self.band_K_tri = self.wave_band(band_center=self.L_K, band_width=self.FWHM*2, step=self.step2)
+        self.band_H_tri = self.wave_band(band_center=self.L_H, band_width=self.FWHM*2, step=self.step2)
         self.all_band = np.arange(self.L_V-10,self.L_R+10,self.step1)
         
         self.trig = self.tri_func(self.step2)
     
     def __loadData(self,path,printname=False):
+        self.path = path
         fitsdata = fits.open(path)
         self.specdata = fitsdata[0]
         if self.specdata.header['TELESCOP']!='LAMOST':
@@ -95,24 +105,91 @@ class CaIISindex:
         #read FITS file name
         file_name = os.path.basename(self.path)
         file_name = os.path.splitext(file_name)[0]
-        self.figure_savepath = '{}.png'.format(file_name)
-        self.Sindex_savepath = 'S_index_{}.csv'.format(file_name)
+        self.figure_savepath = self.save_path + '{}.png'.format(file_name)
+        self.Sindex_savepath = self.save_path + 'S_index_{}.csv'.format(file_name)
         #treat spectrum data
         self.spec = self.specdata.data
         self.flux = self.spec[0][self.begin_index:self.end_index]
         self.error = self.spec[1][self.begin_index:self.end_index]
         self.wavelen = self.spec[2][self.begin_index:self.end_index]
+        self.z = float(self.specdata.header['Z'])
 
-        self.wave_z = [i/(1+float(self.specdata.header['Z'])) for i in self.wavelen]
-        self.flux_func = scipy.interpolate.interp1d(self.wave_z,self.flux,kind='linear')
-        return self.specdata
+    def __wave_calib(self):
+        self.wave_z = [i/(1+self.z) for i in self.wavelen]
+        self.flux_func = scipy.interpolate.interp1d(self.wave_z,self.flux,kind=self.interp_type)
 
-    def __calc_trig(self,x):
-        y = self.flux_func(x)
+
+    def __calc_tri_mean(self,bin_center,step,band_width):
+        y = self.flux_func(bin_center)
         newy = [y[i]*self.trig[i] for i in range(len(y))]
-        total = sum(newy)*self.step2
-        return total/self.FWHM
+        tri_mean = sum(newy)*step/band_width
+        return tri_mean
+
+    def calc_H_tri_mean(self):
+        H_tri_mean = self.__calc_tri_mean(bin_center=self.band_H_tri,step=self.step2,band_width=self.FWHM)
+        self.all_para_dict['H_mean_tri'] = H_tri_mean
+        return H_tri_mean
+
+    def calc_K_tri_mean(self):
+        K_tri_mean = self.__calc_tri_mean(bin_center=self.band_K_tri,step=self.step2,band_width=self.FWHM)
+        self.all_para_dict['K_mean_tri'] = K_tri_mean
+        return K_tri_mean
+
+    def __calc_rec_mean(self,bin_center,step,band_width):
+        rec_mean = sum(self.flux_func(bin_center))*step/band_width
+        return rec_mean
     
+    def calc_R_mean(self):
+        R_mean = self.__calc_rec_mean(bin_center=self.band_R,step=self.step1,band_width=20)
+        self.all_para_dict['R_mean'] = R_mean
+        return R_mean
+
+    def calc_V_mean(self):
+        V_mean = self.__calc_rec_mean(bin_center=self.band_V,step=self.step1,band_width=20)
+        self.all_para_dict['V_mean'] = V_mean
+        return V_mean
+
+    def calc_H_rec_mean(self):
+        H_rec_mean = self.__calc_rec_mean(bin_center=self.band_H_rec,step=self.step2,band_width=1)
+        self.all_para_dict['H_mean_rec'] = H_rec_mean
+        return H_rec_mean
+
+    def calc_K_rec_mean(self):
+        K_rec_mean = self.__calc_rec_mean(bin_center=self.band_K_rec,step=self.step2,band_width=1)
+        self.all_para_dict['K_mean_rec'] = K_rec_mean
+        return K_rec_mean
+
+    def __check_calc_para(self,calc_para):
+        for i in calc_para:
+            if i not in self.para_catalog:
+                error = ('can not calculate '+i+', please check the parameter name！'
+                    +' CaIISindex can only be used to calculate: '+', '.join(para_catalog[:-1]))
+                raise NameError(error)
+            
+    def calc(self,calc_para=False):
+        print('start CaIISindex.calc')
+        print('Please input the parameters you want to calculate:')
+        if calc_para == False:
+        	calc_para = input()
+        print('you put:',calc_para,type(calc_para))
+        print(calc_para ==' ')
+        '''
+        self.__check_calc_para(calc_para)
+        if calc_para == '\n':
+            calc_para = self.para_catalog
+            
+        if 'R_mean' in calc_para:
+            R_mean = self.calc_R_mean()
+        if 'V_mean' in calc_para:
+            V_mean = self.calc_V_mean()
+
+        
+        if 'S_tri' in calc_para:
+            pass
+        '''
+            
+
+        
     def calcSindex(self):
         '''
         
@@ -129,30 +206,77 @@ class CaIISindex:
                     }
         
         '''
-        R_mean = sum(self.flux_func(self.band_R))*self.step1/20. 
-        V_mean = sum(self.flux_func(self.band_V))*self.step1/20.
-        H_mean_rec = sum(self.flux_func(self.band_H))*self.step2/1.
-        K_mean_rec = sum(self.flux_func(self.band_K))*self.step2/1.
-        H_mean_tri = self.__calc_trig(self.band_tri_H)
-        K_mean_tri = self.__calc_trig(self.band_tri_K)
+        
+        self.__wave_calib()
+        
+        R_mean = self.calc_R_mean()
+        V_mean = self.calc_V_mean()
+        H_mean_rec = self.calc_H_rec_mean()
+        K_mean_rec = self.calc_K_rec_mean()
+        H_mean_tri = self.calc_H_tri_mean()
+        K_mean_tri = self.calc_K_tri_mean()
+        
         S_rec = (H_mean_rec+K_mean_rec)/(R_mean+V_mean)
         S_tri = (H_mean_tri+K_mean_tri)/(R_mean+V_mean)
         S_MWL = 8*self.alpha*self.FWHM/20.*(H_mean_tri+K_mean_tri)/(R_mean+V_mean)
 
-        self.all_para_dict['R_mean'] = R_mean
-        self.all_para_dict['V_mean'] = V_mean
-        self.all_para_dict['H_mean_rec'] = H_mean_rec
-        self.all_para_dict['K_mean_rec'] = K_mean_rec
-        self.all_para_dict['H_mean_tri'] = H_mean_tri
-        self.all_para_dict['K_mean_tri'] = K_mean_tri
         self.all_para_dict['S_rec'] = S_rec
         self.all_para_dict['S_tri'] = S_tri
         self.all_para_dict['S_MWL'] = S_MWL
         
-        S_info = [self.all_para_dict[i] for i in self.para_catalog[::2][:-1]]
-        self.para_dict = dict(zip(self.para_catalog[::2][:-1],S_info))
-        return self.para_dict
+        S_info = [self.all_para_dict[i] for i in self.para_catalog[::2]]
+        para_dict = dict(zip(self.para_catalog[::2],S_info))
+        return para_dict
 
+    def __calcErr_from_zplus(self,all_para_dict):        
+        if float(self.specdata.header['Z_ERR'])<0:
+            print(self.specdata.header['OBSID'],self.specdata.header['FILENAME'],self.specdata.header['Z'],self.specdata.header['Z_ERR'])
+            for i in ['R_mean','V_mean','H_mean_tri','K_mean_tri','S_tri','S_MWL','H_mean_rec','K_mean_rec','S_rec']:
+                self.all_para_dict[i+'_err'] = -9999 
+        else:
+            self.z = float(self.specdata.header['Z'])+float(self.specdata.header['Z_ERR'])
+            self.calcSindex()
+            for i in ['R_mean','V_mean','H_mean_tri','K_mean_tri','S_tri','S_MWL','H_mean_rec','K_mean_rec','S_rec']:
+                self.all_para_dict[i+'_err'] = abs(all_para_dict[i] - self.all_para_dict[i])
+        
+        S_info_err = [self.all_para_dict[i] for i in self.para_catalog[1::2]]
+        para_dict_err = dict(zip(self.para_catalog[1::2],S_info_err))
+        return para_dict_err
+
+    
+    def __calcErr_from_zminus(self,all_para_dict):
+        if float(self.specdata.header['Z_ERR'])<0:
+            print(self.specdata.header['OBSID'],self.specdata.header['FILENAME'],self.specdata.header['Z'],self.specdata.header['Z_ERR'])
+            for i in ['R_mean','V_mean','H_mean_tri','K_mean_tri','S_tri','S_MWL','H_mean_rec','K_mean_rec','S_rec']:
+                self.all_para_dict[i+'_err'] = -9999 
+        else:
+            self.z = float(self.specdata.header['Z'])-float(self.specdata.header['Z_ERR'])
+            self.calcSindex()
+            for i in ['R_mean','V_mean','H_mean_tri','K_mean_tri','S_tri','S_MWL','H_mean_rec','K_mean_rec','S_rec']:
+                self.all_para_dict[i+'_err'] = abs(all_para_dict[i] - self.all_para_dict[i])
+        
+        S_info_err = [self.all_para_dict[i] for i in self.para_catalog[1::2]]
+        para_dict_err = dict(zip(self.para_catalog[1::2],S_info_err))
+        return para_dict_err
+
+    def calcErr_from_z(self):
+        for i in self.para_catalog[::2]:
+            if self.all_para_dict[i] == 'unknown':
+                error = ('Can not calculate error of {} without the value of {}!'.format(i,i)
+                    +' You should run calcSindex() before calculating the error.')
+                raise KeyError(error)
+            
+        all_para_dict = self.all_para_dict.copy()
+        zplus = self.__calcErr_from_zplus(all_para_dict)
+        zminus = self.__calcErr_from_zminus(all_para_dict)
+        for i in ['R_mean','V_mean','H_mean_tri','K_mean_tri','S_tri','S_MWL','H_mean_rec','K_mean_rec','S_rec']:
+            self.all_para_dict[i+'_err'] = (zplus[i+'_err'] + zminus[i+'_err'])/2
+        
+        S_info_err = [self.all_para_dict[i] for i in self.para_catalog[1::2]]
+        para_dict_err = dict(zip(self.para_catalog[1::2],S_info_err))
+        return para_dict_err
+        
+        
     def __getOrigError(self):
         original_error = []
         for i in range(len(self.error)):
@@ -164,51 +288,57 @@ class CaIISindex:
         orig_error_bin = [1/(self.wave_z[1]-self.wave_z[0])]+orig_error_bin+[1/(self.wave_z[-2]-self.wave_z[-1])]
         self.f_bin = scipy.interpolate.interp1d(self.wave_z,orig_error_bin,kind='linear')
         self.f_err = scipy.interpolate.interp1d(self.wave_z,original_error,kind='linear')
-    
-    def __calc_RV_err(self):
-        R_err_list = self.f_err(self.band_R)
-        V_err_list = self.f_err(self.band_V)
-        R_bin_list = self.f_bin(self.band_R)
-        V_bin_list = self.f_bin(self.band_V)
-        if min(R_err_list)<=0:
-            R_mean_err = -9999
-        else:
-            tem_err = [R_err_list[i]**2/self.step1/R_bin_list[i] for i in range(len(R_err_list))]
-            R_mean_err = math.sqrt(sum(tem_err))*self.step1/20.
-        if min(V_err_list)<=0:
-            V_mean_err = -9999
-        else:
-            tem_err = [V_err_list[i]**2/self.step1/V_bin_list[i] for i in range(len(V_err_list))]
-            V_mean_err = math.sqrt(sum(tem_err))*self.step1/20.
 
-        return R_mean_err,V_mean_err
+    def __calc_band_err(self,bin_center,step,band_width,tri=False):
+        err_list = self.f_err(bin_center)
+        bin_list = self.f_bin(bin_center)
+        if min(err_list)<=0:
+            rec_err = -9999
+        else:
+            if tri:
+                tem_err = [err_list[i]**2/step/bin_list[i]*self.trig[i]**2 for i in range(len(err_list))]
+            else:
+                tem_err = [err_list[i]**2/step/bin_list[i] for i in range(len(err_list))]
+            rec_err = math.sqrt(sum(tem_err))*step/band_width
+        return rec_err
+            
+    def calc_R_err(self):
+        R_mean_err = self.__calc_band_err(bin_center=self.band_R,step=self.step1,band_width=20)
+        self.all_para_dict['R_mean_err'] = R_mean_err
+        return R_mean_err
 
-    def __calc_HK_tri_err(self):
-        H_err_list = self.f_err(self.band_tri_H)
-        K_err_list = self.f_err(self.band_tri_K)
-        H_bin_list = self.f_bin(self.band_tri_H)
-        K_bin_list = self.f_bin(self.band_tri_K)
-        
-        if min(H_err_list)<=0:
-            H_mean_tri_err = -9999
-        else:
-            tem_err = [H_err_list[i]**2/self.step2/H_bin_list[i]*self.trig[i]**2 for i in range(len(H_err_list))]
-            H_mean_tri_err = math.sqrt(sum(tem_err))*self.step2/self.FWHM
-        if min(K_err_list)<=0:
-            K_mean_tri_err = -9999
-        else:
-            tem_err = [K_err_list[i]**2/self.step2/K_bin_list[i]*self.trig[i]**2 for i in range(len(K_err_list))]
-            K_mean_tri_err = math.sqrt(sum(tem_err))*self.step2/self.FWHM
-        return H_mean_tri_err,K_mean_tri_err
+    def calc_V_err(self):
+        V_mean_err = self.__calc_band_err(bin_center=self.band_V,step=self.step1,band_width=20)
+        self.all_para_dict['V_mean_err'] = V_mean_err
+        return V_mean_err
+
+    def calc_H_rec_err(self):
+        H_rec_mean_err = self.__calc_band_err(bin_center=self.band_H_rec,step=self.step2,band_width=1)
+        self.all_para_dict['H_mean_rec_err'] = H_rec_mean_err
+        return H_rec_mean_err
+
+    def calc_K_rec_err(self):
+        K_rec_mean_err = self.__calc_band_err(bin_center=self.band_K_rec,step=self.step2,band_width=1)
+        self.all_para_dict['K_mean_rec_err'] = K_rec_mean_err
+        return K_rec_mean_err
+
+    def calc_H_tri_err(self):
+        H_tri_mean_err = self.__calc_band_err(bin_center=self.band_H_tri,step=self.step2,band_width=self.FWHM,tri = True)
+        self.all_para_dict['H_mean_tri_err'] = H_tri_mean_err
+        return H_tri_mean_err
+
+    def calc_K_tri_err(self):
+        K_tri_mean_err = self.__calc_band_err(bin_center=self.band_K_tri,step=self.step2,band_width=self.FWHM,tri = True)
+        self.all_para_dict['K_mean_tri_err'] = K_tri_mean_err
+        return K_tri_mean_err
 
     def __calc_S_tri_err(self,R_mean_err,V_mean_err,H_mean_tri_err,K_mean_tri_err):
-
         if -9999 not in [R_mean_err,V_mean_err,H_mean_tri_err,K_mean_tri_err]:
             RV_err = math.sqrt(R_mean_err**2+V_mean_err**2)
-            RV_err = RV_err/(self.para_dict['R_mean']+self.para_dict['V_mean'])
+            RV_err = RV_err/(self.all_para_dict['R_mean']+self.all_para_dict['V_mean'])
             HK_tri_err = math.sqrt(H_mean_tri_err**2+K_mean_tri_err**2)
-            HK_tri_err = HK_tri_err/(self.para_dict['H_mean_tri']+self.para_dict['K_mean_tri'])
-            S_tri_err = self.para_dict['S_tri']*math.sqrt(RV_err**2+HK_tri_err**2)
+            HK_tri_err = HK_tri_err/(self.all_para_dict['H_mean_tri']+self.all_para_dict['K_mean_tri'])
+            S_tri_err = self.all_para_dict['S_tri']*math.sqrt(RV_err**2+HK_tri_err**2)
             S_MWL_err = S_tri_err*8*self.alpha*self.FWHM/20.
         else:
             S_tri_err=-9999
@@ -216,33 +346,42 @@ class CaIISindex:
 
         return S_tri_err,S_MWL_err
 
-    def __calc_HK_rec_err(self):
-        H_err_list = self.f_err(self.band_H)
-        K_err_list = self.f_err(self.band_K)
-        H_bin_list = self.f_bin(self.band_H)
-        K_bin_list = self.f_bin(self.band_K)
-        if min(H_err_list)<=0:
-            H_mean_rec_err = -9999
-        else:
-            tem_err = [H_err_list[i]**2/self.step2/H_bin_list[i] for i in range(len(H_err_list))]
-            H_mean_rec_err = math.sqrt(sum(tem_err))*self.step2/1.
-        if min(K_err_list)<=0:
-            K_mean_rec_err = -9999
-        else:
-            tem_err = [K_err_list[i]**2/self.step2/K_bin_list[i] for i in range(len(K_err_list))]
-            K_mean_rec_err = math.sqrt(sum(tem_err))*self.step2/1.
-        return H_mean_rec_err,K_mean_rec_err
-
     def __calc_S_rec_err(self,R_mean_err,V_mean_err,H_mean_rec_err,K_mean_rec_err):
         if -9999 not in [R_mean_err,V_mean_err,H_mean_rec_err,K_mean_rec_err]:
             RV_err = math.sqrt(R_mean_err**2+V_mean_err**2)
-            RV_err = RV_err/(self.para_dict['R_mean']+self.para_dict['V_mean'])
+            RV_err = RV_err/(self.all_para_dict['R_mean']+self.all_para_dict['V_mean'])
             HK_rec_err = math.sqrt(H_mean_rec_err**2+K_mean_rec_err**2)
-            HK_rec_err = HK_rec_err/(self.para_dict['H_mean_rec']+self.para_dict['K_mean_rec'])
-            S_rec_err = self.para_dict['S_rec']*math.sqrt(RV_err**2+HK_rec_err**2)
+            HK_rec_err = HK_rec_err/(self.all_para_dict['H_mean_rec']+self.all_para_dict['K_mean_rec'])
+            S_rec_err = self.all_para_dict['S_rec']*math.sqrt(RV_err**2+HK_rec_err**2)
         else:
             S_rec_err=-9999
         return S_rec_err
+
+    def calcErr_from_flux(self):
+        for i in self.para_catalog[::2]:
+            if self.all_para_dict[i] == 'unknown':
+                error = ('Can not calculate error of {} without the value of {}!'.format(i,i)
+                    +' You should run calcSindex() before calculating the error.')
+                raise KeyError(error)
+        
+        original_error = self.__getOrigError()
+        R_mean_err = self.calc_R_err()
+        V_mean_err = self.calc_V_err()
+        H_mean_rec_err = self.calc_H_rec_err()
+        K_mean_rec_err = self.calc_K_rec_err()
+        H_mean_tri_err = self.calc_H_tri_err()
+        K_mean_tri_err = self.calc_K_tri_err()
+        
+        S_rec_err = self.__calc_S_rec_err(R_mean_err,V_mean_err,H_mean_rec_err,K_mean_rec_err)
+        S_tri_err,S_MWL_err = self.__calc_S_tri_err(R_mean_err,V_mean_err,H_mean_tri_err,K_mean_tri_err)
+
+        self.all_para_dict['S_rec_err'] = S_rec_err
+        self.all_para_dict['S_tri_err'] = S_tri_err
+        self.all_para_dict['S_MWL_err'] = S_MWL_err
+        
+        S_info_err = [self.all_para_dict[i] for i in self.para_catalog[1::2]]
+        para_dict_err = dict(zip(self.para_catalog[1::2],S_info_err))
+        return para_dict_err
 
     def calcError(self):
         '''
@@ -262,65 +401,60 @@ class CaIISindex:
         '''
         
         self.calcSindex()
-        original_error = self.__getOrigError()
-
-        R_mean_err,V_mean_err = self.__calc_RV_err()
-        H_mean_rec_err,K_mean_rec_err = self.__calc_HK_rec_err()
-        S_rec_err = self.__calc_S_rec_err(R_mean_err,V_mean_err,H_mean_rec_err,K_mean_rec_err)
-        H_mean_tri_err,K_mean_tri_err = self.__calc_HK_tri_err()
-        S_tri_err,S_MWL_err = self.__calc_S_tri_err(R_mean_err,V_mean_err,H_mean_tri_err,K_mean_tri_err)
-
-        self.all_para_dict['R_mean_err'] = R_mean_err
-        self.all_para_dict['V_mean_err'] = V_mean_err
-        self.all_para_dict['H_mean_rec_err'] = H_mean_rec_err
-        self.all_para_dict['K_mean_rec_err'] = K_mean_rec_err
-        self.all_para_dict['H_mean_tri_err'] = H_mean_tri_err
-        self.all_para_dict['K_mean_tri_err'] = K_mean_tri_err
-        self.all_para_dict['S_rec_err'] = S_rec_err
-        self.all_para_dict['S_tri_err'] = S_tri_err
-        self.all_para_dict['S_MWL_err'] = S_MWL_err
+        z_err = self.calcErr_from_z()
+        flux_err = self.calcErr_from_flux()
+            
+        for i in ['R_mean','V_mean','H_mean_tri','K_mean_tri','S_tri','S_MWL','H_mean_rec','K_mean_rec','S_rec']:
+            if z_err[i+'_err']<0 or flux_err[i+'_err']<0:
+                tem_err = -9999
+            else:
+                tem_err = (z_err[i+'_err']**2 + flux_err[i+'_err']**2)
+                tem_err = tem_err**0.5
+            self.all_para_dict[i+'_err'] = tem_err
         
         S_info_err = [self.all_para_dict[i] for i in self.para_catalog[1::2]]
         para_dict_err = dict(zip(self.para_catalog[1::2],S_info_err))
-        return para_dict_err
-
-    def __getCalcInfo(self):
-        para_dict_err = self.calcError()
-        S_info_err = [para_dict_err[key] for key in para_dict_err]
-        if -9999 not in S_info_err:
-            self.all_para_dict['condition_tag'] = ' '
-        else:
-            self.all_para_dict['condition_tag'] = 'uncertainty=-9999'
-        S_info = ['{:.6f}'.format(value) for key,value in self.para_dict.items()]
-        S_info_err = ['{:.6f}'.format(i) for i in S_info_err]
-        new_info = []
-        for i in range(len(S_info)):
-            new_info+=[S_info[i],S_info_err[i]]
-        new_info += [self.all_para_dict['condition_tag']]
-        return new_info
+        return para_dict_err        
+        
     
-    def __recordSErr(self,new_info,header=True):
+    def __getCalcInfo(self):
+        self.calcError()
+        calced = ['{:.6f}'.format(value) for key,value in self.all_para_dict.items()]
+
+        return calced
+    
+    def __recordSErr(self,record_info,header=True):
         obsid = self.specdata.header['OBSID']
         fitsname = self.specdata.header['FILENAME']
-        record_info = [str(obsid),fitsname] + new_info
+        record_info = [str(obsid),fitsname] + record_info
         record_catalog = ['obsid','fitsname'] + list(self.para_catalog)
         f=open(self.Sindex_savepath,'w')
         if header:
-            f.write('|'.join(record_catalog)+'\n')
-        f.write('|'.join(record_info)+'\n')
+            f.write(','.join(record_catalog)+'\n')
+        f.write(','.join(record_info)+'\n')
         f.close()
         return [record_catalog,record_info]
     
-    def __data_plot(self):
+    def __data_plot(self,fig2=True):
+        plot_flux = self.flux_func(self.all_band)
         plt.rcParams['xtick.direction'] = 'in'
         plt.rcParams['ytick.direction'] = 'in'
         plt.figure(figsize=(14,7))
         ax1 = plt.gca()
-        plot_flux = self.flux_func(self.all_band)
-        fig1 = ax1.plot(self.all_band,plot_flux/max(plot_flux),color='red',label='shifted',linewidth='1.5')
-        ax1.plot([self.L_V-10,self.L_R+10],[1,1],linestyle='--',color='black')
         ax2 = ax1.twinx()
-        fig2 = ax2.plot(self.wavelen,self.flux,label='original',linewidth='1.5',linestyle='-.',color='blue')
+        ax2.set_ylim(0,max(plot_flux)*1.2)
+        if self.z == 0:
+            fig1 = ax1.plot(self.all_band,plot_flux/max(plot_flux),label='original',linewidth='1.5',color='red')
+            ax1.legend(handles=fig1,loc='upper left',fontsize='15')
+        elif fig2==False:
+            fig1 = ax1.plot(self.all_band,plot_flux/max(plot_flux),color='red',label='shifted',linewidth='1.5')        
+            ax1.legend(handles=fig1,loc='upper left',fontsize='15')
+        else:
+            fig1 = ax1.plot(self.all_band,plot_flux/max(plot_flux),color='red',label='shifted',linewidth='1.5')
+            fig2 = ax2.plot(self.wavelen,self.flux,label='original',linewidth='1.5',linestyle='-.',color='blue')
+            ax2.legend(handles=fig1+fig2,loc='upper left',fontsize='15')
+        
+        ax1.plot([self.L_V-10,self.L_R+10],[1,1],linestyle='--',color='black')
 
         tri_color = 'lime'
         ax1.fill_between([self.L_H-self.FWHM,self.L_H,self.L_H+self.FWHM],[0,0,0],[0,1,0],color=tri_color)
@@ -334,14 +468,10 @@ class CaIISindex:
         ax1.plot([self.L_H,self.L_H],[0,1],color='black',linestyle='--')
         ax1.plot([self.L_K,self.L_K],[0,1],color='black',linestyle='--')
 
-        ax1.annotate("Ca II H "+str(self.L_H)+r'$\,$'+u'\u00C5',xy=(self.L_H,0.1),xytext=(self.L_H+4,0.15),
-                color="blue",weight="bold",fontsize=11,arrowprops=dict(arrowstyle="->",color="blue"))
-        ax1.annotate("Ca II K "+str(self.L_K)+r'$\,$'+u'\u00C5',xy=(self.L_K,0.1),xytext=(self.L_K+4,0.15),
-                color="blue",weight="bold",fontsize=11,arrowprops=dict(arrowstyle="->",color="blue"))
-        ax2.legend(handles=fig1+fig2,loc='upper left',fontsize='15')
-        ax2.set_ylim(0,max(plot_flux)*1.2)
+        self.fig1 = fig1
+        self.fig2 = fig2
         return ax1,ax2
-
+    
     def __plotset(self,ax1,ax2):
         xmajorLocator = MultipleLocator(10)
         ax1.xaxis.set_major_locator(xmajorLocator)
@@ -351,7 +481,8 @@ class CaIISindex:
         ax1.xaxis.set_minor_locator(xminorLocator)
         yminorLocator = MultipleLocator(0.05)
         ax1.yaxis.set_minor_locator(yminorLocator)
-        ax1.tick_params(which='major',length=8,width=1.5,labelsize=15)
+        ax1.tick_params(axis='x',which='major',length=8,width=1.5,labelsize=15,pad=8)
+        ax1.tick_params(axis='y',which='major',length=8,width=1.5,labelsize=15)
         ax1.tick_params(which='minor',length=4,width=1)
         ax1.set_xlabel(r'$\rm{Vacuum\ Wavelength\ (\AA)}$',fontsize=15)
         ax1.set_ylabel('Relative Flux',fontsize=15)
@@ -361,19 +492,29 @@ class CaIISindex:
         ax2.tick_params(which='major',length=8,width=1.5,labelsize=15)
         return ax1,ax2
 
-    def __plotInfo(self,ax1,ax2,calced_info):
-        para_catalog = self.para_catalog
-        rv_str = '{:.2f}'.format(float(self.specdata.header['Z'])*299792.458)
+    def __plotS(self,ax1,ax2):
+        ax1.text(self.L_K-4,1.03,'H_mean_rec={:.3f}\nK_mean_rec={:.3f}\nS_rec={:.3f}'.format(self.all_para_dict['H_mean_rec'],
+                self.all_para_dict['K_mean_rec'],self.all_para_dict['S_rec']),fontsize=15)
+        ax1.text(self.L_H-10,1.03,'H_mean_tri={:.3f}\nK_mean_tri={:.3f}\nS_tri={:.3f}'.format(self.all_para_dict['H_mean_tri'],
+                self.all_para_dict['K_mean_tri'],self.all_para_dict['S_tri']),fontsize=15)
+        ax1.text(self.L_R-15,1.03,'R_mean={:.3f}\nV_mean={:.3f}\nS_MWL={:.3f}'.format(self.all_para_dict['R_mean'],
+                self.all_para_dict['V_mean'],self.all_para_dict['S_MWL']),fontsize=15)
+
+        rv_str = '{:.2f}'.format(float(self.z)*299792.458)
         rv_str = '$'+rv_str+'$'
         ax1.text(self.L_V+9,1.03,'Radial Velocity\n='+r'$\,$'+rv_str+r'$\,$'+'km/s\n', fontsize=15)
-        ax1.text(self.L_K-4,1.03,'H_mean_rec={:.3f}\nK_mean_rec={:.3f}\nS_rec={:.3f}'.format(float(calced_info[para_catalog.index('H_mean_rec')]),
-                        float(calced_info[para_catalog.index('K_mean_rec')]),float(calced_info[para_catalog.index('S_rec')])),fontsize=15)
-        ax1.text(self.L_H-10,1.03,'H_mean_tri={:.3f}\nK_mean_tri={:.3f}\nS_tri={:.3f}'.format(float(calced_info[para_catalog.index('H_mean_tri')]),
-                        float(calced_info[para_catalog.index('K_mean_tri')]),float(calced_info[para_catalog.index('S_tri')])),fontsize=15)
-        ax1.text(self.L_R-15,1.03,'R_mean={:.3f}\nV_mean={:.3f}\nS_MWL={:.3f}'.format(float(calced_info[para_catalog.index('R_mean')]),
-                        float(calced_info[para_catalog.index('V_mean')]),float(calced_info[para_catalog.index('S_MWL')])),fontsize=15)
+        return ax1,ax2
+        
+    def __plotInfo(self,ax1,ax2):
+        ax1,ax2 = self.__plotS(ax1,ax2)
+        
         ax1.text(self.L_V-5,0.2,r'$V$ band',fontsize=15)
         ax1.text(self.L_R-5,0.2,r'$R$ band',fontsize=15)
+        ax1.annotate("Ca II H "+str(self.L_H)+r'$\,$'+u'\u00C5',xy=(self.L_H,0.1),xytext=(self.L_H+4,0.15),
+                color="blue",weight="bold",fontsize=11,arrowprops=dict(arrowstyle="->",color="blue"))
+        ax1.annotate("Ca II K "+str(self.L_K)+r'$\,$'+u'\u00C5',xy=(self.L_K,0.1),xytext=(self.L_K+4,0.15),
+                color="blue",weight="bold",fontsize=11,arrowprops=dict(arrowstyle="->",color="blue"))
+
         teff_str = '{}'.format(self.stellar_parameters[0])
         if (teff_str != 'unknown'):
             teff_str = teff_str.strip()
@@ -385,15 +526,16 @@ class CaIISindex:
         logg_str = logg_str.strip()
         feh_str = '{}'.format(self.stellar_parameters[2])
         feh_str = feh_str.strip()
-        feh_str = '$'+feh_str+'$'
+        if (feh_str != 'unknown'):
+            feh_str = '$'+feh_str+'$'
         snrg_str = '{}'.format(self.specdata.header['SNRG'])
         snrr_str = '{}'.format(self.specdata.header['SNRR'])
         title_info = r'$T_\mathrm{eff}$=' + teff_str + r'   $\log\,g$=' + logg_str + '   [Fe/H]='+ feh_str + r'   $\mathrm{SNR}_g$=' + snrg_str + r'   $\mathrm{SNR}_r$=' + snrr_str
-        ax1.text((self.L_R + self.L_V)/2.0, 1.22, title_info, fontsize=15, horizontalalignment='center')
-        ax1.set_title('Obsid-{} {} ({})\n'.format(self.specdata.header['OBSID'],self.specdata.header['FILENAME'],self.specdata.header['DATA_V']),fontsize=15)
+        #ax1.text((self.L_R + self.L_V)/2.0, 1.22, title_info, fontsize=15, horizontalalignment='center')
+        ax1.set_title('Obsid-{} {} ({})\n{}'.format(self.specdata.header['OBSID'],self.specdata.header['FILENAME'],self.specdata.header['DATA_V'],title_info),fontsize=15)
         return ax1,ax2
 
-    def plotSpectrum(self, figure_savepath=None, stellar_parameters=None, figshow=True):
+    def plotSpectrum(self, figure_savepath=None, stellar_parameters=None, figsav=True, figshow=True):
         '''
         
         Generate spectrum diagram.
@@ -409,15 +551,17 @@ class CaIISindex:
         calced_info = self.__getCalcInfo()
         ax1,ax2 = self.__data_plot()
         ax1,ax2 = self.__plotset(ax1,ax2)
-        self.ax1,self.ax2 = self.__plotInfo(ax1,ax2,calced_info)
+        self.ax1,self.ax2 = self.__plotInfo(ax1,ax2)
         if figure_savepath:
             self.figure_savepath = figure_savepath
-        plt.savefig(self.figure_savepath,bbox_inches='tight')
+        if figsav:
+            plt.savefig(self.figure_savepath,bbox_inches='tight')
         if figshow:
             plt.show()
+        plt.close()
         return calced_info
  
-    def saveRecord(self, Sindex_savepath=None, figure_savepath=None, stellar_parameters=None, csv_header=True, figshow=False):
+    def saveRecord(self, Sindex_savepath=None, figure_savepath=None, stellar_parameters=None, csv_header=True, figsav=True, figshow=False):
         '''
         
         Save stellar activity parameters to a csv file and spectrum diagram to a figure file.
@@ -430,19 +574,46 @@ class CaIISindex:
             figshow:                show spectrum diagram on screen (True/False, default False)
         
         '''
-        new_info = self.plotSpectrum(figure_savepath, stellar_parameters, figshow)
+        calced = self.plotSpectrum(figure_savepath=figure_savepath, stellar_parameters=stellar_parameters, figsav=figsav, figshow=figshow)
         if Sindex_savepath:
             self.Sindex_savepath = Sindex_savepath
-        record_info = self.__recordSErr(new_info,csv_header)
+        record_info = self.__recordSErr(calced,csv_header)
         record_dict = dict(zip(record_info[0],record_info[1]))
         return record_dict
 
+def main():
+    print('Start cals')
+    parser = argparse.ArgumentParser(description='description\n')
+    parser.add_argument('-cs','-c',help = 'Calculate the S by setting file path. | e.g. cals -c example.fits')
+    parser.add_argument('-figsav','-fs',help = 'Save/not save figure by setting figsav as 1/0',default=1,choices=[0,1],type=int)
+    parser.add_argument('-figshow','-fw',help = 'Display/not display figure by setting figshow as 1/0',default=0,choices=[0,1],type=int)
+    parser.add_argument('-savepath','-sp',help = 'Setting save path',default='')
+    args = parser.parse_args()
 
+    if args.cs:
+        CaIISindex.save_path = args.savepath
+        cs = CaIISindex(args.cs)
+        cs.saveRecord(figsav=args.figsav,figshow=args.figshow)
+    
+    
 if __name__ == '__main__':
-    #pass
+
     data_path = "example.fits"
     cs = CaIISindex(data_path)
-    cs.stellar_parameters = ['5534.22','4.423','-0.025']
+    cs.calcSindex()
+    #cs.calc()
+    
+    '''
+    cs.calcErr_from_z()
+    print(cs.all_para_dict)
+    cs.calcErr_from_flux()
+    print(cs.all_para_dict)
+    cs.calcError()
+    print(cs.all_para_dict)
+    '''
+
+    #cs.stellar_parameters = ['5534.22','4.423','-0.025']
     cs.saveRecord()
+
     
 

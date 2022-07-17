@@ -1,12 +1,12 @@
 #!/usr/bin/python
 
-from cals import CaIISindex
+import cals
 
 if __name__ == '__main__':
     # help(cals)
     # help(cals.CaIISindex)
     data_path = "example.fits"
-    cs = CaIISindex(data_path)
+    cs = cals.CaIISindex(data_path)
     # cs.Sindex_savepath = 'S_index_example.csv'               # set csv file save path
     # cs.figure_savepath = 'example.png'                       # set figure file save path
     cs.stellar_parameters = ['5534.22', '4.423', '-0.025']    # set stellar parameters [teff (K), logg (dex), feh (dex)]
