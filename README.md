@@ -102,8 +102,26 @@ Save stellar chromospheric activity parameters (and their error values) to a csv
 ## Terminal model
 
 ```
-usage: cals [-h] [-cs CS] [-figsav {0,1}] [-figshow {0,1}]
-            [-savepath SAVEPATH]
+Start cals
+usage: cals [-h] --cs CS [--savepath SAVEPATH] [--figsav {0,1}] [--figshow {0,1}]
+
+
+optional arguments:
+  -h, --help            show this help message and exit
+  --cs CS, -c CS        Calculate the S by setting file path. | e.g. cals -c example.fits
+  --savepath SAVEPATH, -sp SAVEPATH
+                        Setting save path
+  --figsav {0,1}, -fs {0,1}
+                        Save/not save figure by setting figsav as 1/0, default=1.
+  --figshow {0,1}, -fw {0,1}
+                        Display/not display figure by setting figshow as 1/0, default=0.
 
 ```
+
+####terminal example
+
+`cd example/`
+`cals -c ./example/example.fits -sp ./example/`
+
+
 
