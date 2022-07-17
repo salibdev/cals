@@ -99,3 +99,11 @@ cs.saveRecord(Sindex_savepath=None,
 
 Save stellar chromospheric activity parameters (and their error values) to a csv file and spectrum diagram to a figure file.
 
+## Terminal model
+
+```
+usage: cals [-h] [-cs CS] [-figsav {0,1}] [-figshow {0,1}]
+            [-savepath SAVEPATH]
+
+```
+

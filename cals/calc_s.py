@@ -584,10 +584,11 @@ class CaIISindex:
 def main():
     print('Start cals')
     parser = argparse.ArgumentParser(description='description\n')
-    parser.add_argument('-cs','-c',help = 'Calculate the S by setting file path. | e.g. cals -c example.fits')
-    parser.add_argument('-figsav','-fs',help = 'Save/not save figure by setting figsav as 1/0',default=1,choices=[0,1],type=int)
-    parser.add_argument('-figshow','-fw',help = 'Display/not display figure by setting figshow as 1/0',default=0,choices=[0,1],type=int)
-    parser.add_argument('-savepath','-sp',help = 'Setting save path',default='')
+    parser.add_argument('--cs','-c',help = 'Calculate the S by setting file path. | e.g. cals -c example.fits',required=True)
+    parser.add_argument('--savepath','-sp',help = 'Setting save path',default='')
+    parser.add_argument('--figsav','-fs',help = 'Save/not save figure by setting figsav as 1/0, default=1.',default=1,choices=[0,1],type=int)
+    parser.add_argument('--figshow','-fw',help = 'Display/not display figure by setting figshow as 1/0, default=0.',default=0,choices=[0,1],type=int)
+
     args = parser.parse_args()
 
     if args.cs:
