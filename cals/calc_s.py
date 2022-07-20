@@ -15,7 +15,14 @@ import matplotlib
 import matplotlib.pyplot as plt
 from matplotlib.ticker import MultipleLocator
 
+def wave_band(band_center,band_width,step):
+    rec_band = np.arange(band_center-band_width/2+0.5*step,band_center+band_width/2,step)
+    return rec_band
 
+def tri_func(step,FWHM):
+    tem_tri = list(np.arange(step/FWHM/2,1,step/FWHM))
+    trig = tem_tri+tem_tri[::-1]
+    return trig
 
 class CaIISindex:
     '''
@@ -39,14 +46,12 @@ class CaIISindex:
     '''
     
     save_path = ''
-    figure_savepath = None
-    Sindex_savepath = None
     stellar_parameters = ['unknown','unknown','unknown']
 
-    L_K = 3934.78   #wavelength in vacuum
-    L_H = 3969.59   #wavelength in vacuum
-    L_R = 4002.20   #wavelength in vacuum
-    L_V = 3902.17   #wavelength in vacuum
+    L_K = 3934.78   #Center wavelength of K windows in vacuum
+    L_H = 3969.59   #Center wavelength of H windows in vacuum
+    L_R = 4002.20   #Center wavelength of R windows in vacuum
+    L_V = 3902.17   #Center wavelength of V windows in vacuum
 
     step1 = 0.01
     step2 = 0.001
@@ -74,32 +79,23 @@ class CaIISindex:
             #self.path = path
             self.__loadData(path)
     
-    def wave_band(self,band_center,band_width,step):
-        rec_band = np.arange(band_center-band_width/2+0.5*step,band_center+band_width/2,step)
-        return rec_band
-
-    def tri_func(self,step):
-        tem_tri = list(np.arange(step/self.FWHM/2,1,step/self.FWHM))
-        trig = tem_tri+tem_tri[::-1]
-        return trig
-        
     def __prework(self):    
-        self.band_V = self.wave_band(band_center=self.L_V, band_width=20, step=self.step1)
-        self.band_R = self.wave_band(band_center=self.L_R, band_width=20, step=self.step1)
-        self.band_K_rec = self.wave_band(band_center=self.L_K, band_width=1, step=self.step2)
-        self.band_H_rec = self.wave_band(band_center=self.L_H, band_width=1, step=self.step2)
-        self.band_K_tri = self.wave_band(band_center=self.L_K, band_width=self.FWHM*2, step=self.step2)
-        self.band_H_tri = self.wave_band(band_center=self.L_H, band_width=self.FWHM*2, step=self.step2)
+        self.band_V = wave_band(band_center=self.L_V, band_width=20, step=self.step1)
+        self.band_R = wave_band(band_center=self.L_R, band_width=20, step=self.step1)
+        self.band_K_rec = wave_band(band_center=self.L_K, band_width=1, step=self.step2)
+        self.band_H_rec = wave_band(band_center=self.L_H, band_width=1, step=self.step2)
+        self.band_K_tri = wave_band(band_center=self.L_K, band_width=self.FWHM*2, step=self.step2)
+        self.band_H_tri = wave_band(band_center=self.L_H, band_width=self.FWHM*2, step=self.step2)
         self.all_band = np.arange(self.L_V-10,self.L_R+10,self.step1)
         
-        self.trig = self.tri_func(self.step2)
+        self.trig = tri_func(step=self.step2, FWHM=self.FWHM)
     
     def __loadData(self,path,printname=False):
         self.path = path
         fitsdata = fits.open(path)
         self.specdata = fitsdata[0]
         if self.specdata.header['TELESCOP']!='LAMOST':
-            print('warning: not LAMOST data')
+            print('warning: not LAMOST data!')
         if printname:
             print('fitsname '+self.specdata.header['FILENAME'])
         #read FITS file name
@@ -165,30 +161,6 @@ class CaIISindex:
                 error = ('can not calculate '+i+', please check the parameter name！'
                     +' CaIISindex can only be used to calculate: '+', '.join(para_catalog[:-1]))
                 raise NameError(error)
-            
-    def calc(self,calc_para=False):
-        print('start CaIISindex.calc')
-        print('Please input the parameters you want to calculate:')
-        if calc_para == False:
-        	calc_para = input()
-        print('you put:',calc_para,type(calc_para))
-        print(calc_para ==' ')
-        '''
-        self.__check_calc_para(calc_para)
-        if calc_para == '\n':
-            calc_para = self.para_catalog
-            
-        if 'R_mean' in calc_para:
-            R_mean = self.calc_R_mean()
-        if 'V_mean' in calc_para:
-            V_mean = self.calc_V_mean()
-
-        
-        if 'S_tri' in calc_para:
-            pass
-        '''
-            
-
         
     def calcSindex(self):
         '''
@@ -269,6 +241,7 @@ class CaIISindex:
         all_para_dict = self.all_para_dict.copy()
         zplus = self.__calcErr_from_zplus(all_para_dict)
         zminus = self.__calcErr_from_zminus(all_para_dict)
+        self.all_para_dict = all_para_dict.copy()
         for i in ['R_mean','V_mean','H_mean_tri','K_mean_tri','S_tri','S_MWL','H_mean_rec','K_mean_rec','S_rec']:
             self.all_para_dict[i+'_err'] = (zplus[i+'_err'] + zminus[i+'_err'])/2
         
@@ -416,24 +389,41 @@ class CaIISindex:
         para_dict_err = dict(zip(self.para_catalog[1::2],S_info_err))
         return para_dict_err        
         
-    
-    def __getCalcInfo(self):
-        self.calcError()
-        calced = ['{:.6f}'.format(value) for key,value in self.all_para_dict.items()]
+    def calc(self,calc_para=False,accuracy=6,datasav=False,fitsinfo = ['OBSID','FILENAME'],header=True):
+        if calc_para == False:
+            self.calcError()
+            for key in self.all_para_dict:
+                self.all_para_dict[key] = round(self.all_para_dict[key],accuracy)
+        if datasav:
+            self.recorddata(fitsinfo = fitsinfo,header=header)
+        return self.all_para_dict
 
-        return calced
+    def __get_fitsinfo(self,fitsinfo=['OBSID','FILENAME']):
+        info = []
+        info_data=[]
+        for i in fitsinfo:
+            try:
+                info_data.append(self.specdata.header[i])
+                if i=='FILENAME':
+                    info.append('fitsname')
+                else:
+                    info.append(i)
+            except:
+                print('Warning:',i,'not in .fits file!')
+        return dict(zip(info,info_data))
     
-    def __recordSErr(self,record_info,header=True):
-        obsid = self.specdata.header['OBSID']
-        fitsname = self.specdata.header['FILENAME']
-        record_info = [str(obsid),fitsname] + record_info
-        record_catalog = ['obsid','fitsname'] + list(self.para_catalog)
+    def __recorddata(self,fitsinfo = ['OBSID','FILENAME'],header=True):
+        fits_dict = self.__get_fitsinfo(fitsinfo =fitsinfo)
+        
+        record_dict = dict(**fits_dict,**self.all_para_dict)
+        record_catalog = fitsinfo + list(self.para_catalog)
+        record_info = [str(record_dict[i]) for i in record_dict]
         f=open(self.Sindex_savepath,'w')
         if header:
             f.write(','.join(record_catalog)+'\n')
         f.write(','.join(record_info)+'\n')
         f.close()
-        return [record_catalog,record_info]
+        return record_dict
     
     def __data_plot(self,fig2=True):
         plot_flux = self.flux_func(self.all_band)
@@ -548,7 +538,7 @@ class CaIISindex:
         '''
         if stellar_parameters:
             self.stellar_parameters = stellar_parameters
-        calced_info = self.__getCalcInfo()
+        calced_info = self.calc()
         ax1,ax2 = self.__data_plot()
         ax1,ax2 = self.__plotset(ax1,ax2)
         self.ax1,self.ax2 = self.__plotInfo(ax1,ax2)
@@ -561,7 +551,8 @@ class CaIISindex:
         plt.close()
         return calced_info
  
-    def saveRecord(self, Sindex_savepath=None, figure_savepath=None, stellar_parameters=None, csv_header=True, figsav=True, figshow=False):
+    def saveRecord(self, figure_savepath=None, stellar_parameters=None, figsav=True, figshow=False,
+                   Sindex_savepath=None, fitsinfo=['OBSID','FILENAME'], data_header=True, datasav=True):
         '''
         
         Save stellar activity parameters to a csv file and spectrum diagram to a figure file.
@@ -574,35 +565,40 @@ class CaIISindex:
             figshow:                show spectrum diagram on screen (True/False, default False)
         
         '''
-        calced = self.plotSpectrum(figure_savepath=figure_savepath, stellar_parameters=stellar_parameters, figsav=figsav, figshow=figshow)
+        calced_info = self.plotSpectrum(figure_savepath=figure_savepath, stellar_parameters=stellar_parameters, figsav=figsav, figshow=figshow)
         if Sindex_savepath:
             self.Sindex_savepath = Sindex_savepath
-        record_info = self.__recordSErr(calced,csv_header)
-        record_dict = dict(zip(record_info[0],record_info[1]))
+        if datasav:
+            record_dict = self.__recorddata(fitsinfo=fitsinfo, header=data_header)
+
         return record_dict
 
 def main():
-    print('Start cals')
+    print('Start cals\nVesion 1.0.0')
     parser = argparse.ArgumentParser(description='description\n')
     parser.add_argument('--cs','-c',help = 'Calculate the S by setting file path. | e.g. cals -c example.fits',required=True)
-    parser.add_argument('--savepath','-sp',help = 'Setting save path',default='')
+    parser.add_argument('--savepath','-sp',help = 'Setting save path.',default='')
     parser.add_argument('--figsav','-fs',help = 'Save/not save figure by setting figsav as 1/0, default=1.',default=1,choices=[0,1],type=int)
-    parser.add_argument('--figshow','-fw',help = 'Display/not display figure by setting figshow as 1/0, default=0.',default=0,choices=[0,1],type=int)
-
+    parser.add_argument('--figdisplay','-fd',help = 'Display/not display figure by setting figshow as 1/0, default=0.',default=0,choices=[0,1],type=int)
+    parser.add_argument('--datasav','-ds',help = 'Save/not save data by setting datasav as 1/0, default=1.',default=1,choices=[0,1],type=int)
+    parser.add_argument('--dataprint','-dp',help = 'Display/not display data by setting dataprint as 1/0, default=1.',default=1,choices=[0,1],type=int)
     args = parser.parse_args()
 
     if args.cs:
         CaIISindex.save_path = args.savepath
         cs = CaIISindex(args.cs)
-        cs.saveRecord(figsav=args.figsav,figshow=args.figshow)
-    
-    
+        para_dict = cs.saveRecord(figsav=args.figsav,figshow=args.figdisplay,datasav=args.datasav)
+    if args.dataprint:
+        print('*'*18+'Result'+'*'*18)
+        for key in para_dict:
+            print('{:^20}: {}'.format(key, para_dict[key]))
+        print('*'*19+'End'+'*'*19)
+
 if __name__ == '__main__':
 
     data_path = "example.fits"
     cs = CaIISindex(data_path)
-    cs.calcSindex()
-    #cs.calc()
+    #cs.calcSindex()
     
     '''
     cs.calcErr_from_z()
@@ -613,8 +609,8 @@ if __name__ == '__main__':
     print(cs.all_para_dict)
     '''
 
-    #cs.stellar_parameters = ['5534.22','4.423','-0.025']
-    cs.saveRecord()
+    cs.stellar_parameters = ['5534.22','4.423','-0.025']
+    print(cs.saveRecord())
 
     
 
