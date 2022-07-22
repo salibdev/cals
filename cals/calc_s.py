@@ -9,8 +9,7 @@ import time
 
 import numpy as np
 from astropy.io import fits
-import scipy
-import scipy.interpolate
+from scipy.interpolate import interp1d
 import matplotlib
 import matplotlib.pyplot as plt
 from matplotlib.ticker import MultipleLocator
@@ -101,19 +100,18 @@ class CaIISindex:
         #read FITS file name
         file_name = os.path.basename(self.path)
         file_name = os.path.splitext(file_name)[0]
-        self.figure_savepath = self.save_path + '{}.png'.format(file_name)
-        self.Sindex_savepath = self.save_path + 'S_index_{}.csv'.format(file_name)
-        #treat spectrum data
-        self.spec = self.specdata.data
-        self.flux = self.spec[0][self.begin_index:self.end_index]
-        self.error = self.spec[1][self.begin_index:self.end_index]
-        self.wavelen = self.spec[2][self.begin_index:self.end_index]
+        self.figure_savepath = os.path.join(self.save_path,'{}.png'.format(file_name))
+        self.Sindex_savepath = os.path.join(self.save_path,'S_index_{}.csv'.format(file_name))
+        #read spectrum data
+        spec = self.specdata.data
+        self.flux = spec[0][self.begin_index:self.end_index]
+        self.error = spec[1][self.begin_index:self.end_index]
+        self.wavelen = spec[2][self.begin_index:self.end_index]
         self.z = float(self.specdata.header['Z'])
 
     def __wave_calib(self):
         self.wave_z = [i/(1+self.z) for i in self.wavelen]
-        self.flux_func = scipy.interpolate.interp1d(self.wave_z,self.flux,kind=self.interp_type)
-
+        self.flux_func = interp1d(self.wave_z,self.flux,kind=self.interp_type)
 
     def __calc_tri_mean(self,bin_center,step,band_width):
         y = self.flux_func(bin_center)
@@ -200,36 +198,32 @@ class CaIISindex:
         para_dict = dict(zip(self.para_catalog[::2],S_info))
         return para_dict
 
-    def __calcErr_from_zplus(self,all_para_dict):        
+    def __calcErr_from_zplus(self,all_para_dict):
+        para_err_dict={}
         if float(self.specdata.header['Z_ERR'])<0:
-            print(self.specdata.header['OBSID'],self.specdata.header['FILENAME'],self.specdata.header['Z'],self.specdata.header['Z_ERR'])
-            for i in ['R_mean','V_mean','H_mean_tri','K_mean_tri','S_tri','S_MWL','H_mean_rec','K_mean_rec','S_rec']:
-                self.all_para_dict[i+'_err'] = -9999 
+            for i in self.para_catalog[::2]:
+                para_err_dict[i+'_err'] = -9999 
         else:
             self.z = float(self.specdata.header['Z'])+float(self.specdata.header['Z_ERR'])
             self.calcSindex()
-            for i in ['R_mean','V_mean','H_mean_tri','K_mean_tri','S_tri','S_MWL','H_mean_rec','K_mean_rec','S_rec']:
-                self.all_para_dict[i+'_err'] = abs(all_para_dict[i] - self.all_para_dict[i])
+            for i in self.para_catalog[::2]:
+                para_err_dict[i+'_err'] = abs(all_para_dict[i] - self.all_para_dict[i])
+                self.all_para_dict[i] = all_para_dict[i]
         
-        S_info_err = [self.all_para_dict[i] for i in self.para_catalog[1::2]]
-        para_dict_err = dict(zip(self.para_catalog[1::2],S_info_err))
-        return para_dict_err
+        return para_err_dict
 
-    
     def __calcErr_from_zminus(self,all_para_dict):
+        para_err_dict = {}
         if float(self.specdata.header['Z_ERR'])<0:
-            print(self.specdata.header['OBSID'],self.specdata.header['FILENAME'],self.specdata.header['Z'],self.specdata.header['Z_ERR'])
-            for i in ['R_mean','V_mean','H_mean_tri','K_mean_tri','S_tri','S_MWL','H_mean_rec','K_mean_rec','S_rec']:
-                self.all_para_dict[i+'_err'] = -9999 
+            for i in self.para_catalog[::2]:
+                para_err_dict[i+'_err'] = -9999 
         else:
             self.z = float(self.specdata.header['Z'])-float(self.specdata.header['Z_ERR'])
             self.calcSindex()
-            for i in ['R_mean','V_mean','H_mean_tri','K_mean_tri','S_tri','S_MWL','H_mean_rec','K_mean_rec','S_rec']:
-                self.all_para_dict[i+'_err'] = abs(all_para_dict[i] - self.all_para_dict[i])
-        
-        S_info_err = [self.all_para_dict[i] for i in self.para_catalog[1::2]]
-        para_dict_err = dict(zip(self.para_catalog[1::2],S_info_err))
-        return para_dict_err
+            for i in self.para_catalog[::2]:
+                para_err_dict[i+'_err'] = abs(all_para_dict[i] - self.all_para_dict[i])
+                self.all_para_dict[i] = all_para_dict[i]
+        return para_err_dict
 
     def calcErr_from_z(self):
         for i in self.para_catalog[::2]:
@@ -237,17 +231,22 @@ class CaIISindex:
                 error = ('Can not calculate error of {} without the value of {}!'.format(i,i)
                     +' You should run calcSindex() before calculating the error.')
                 raise KeyError(error)
-            
-        all_para_dict = self.all_para_dict.copy()
-        zplus = self.__calcErr_from_zplus(all_para_dict)
-        zminus = self.__calcErr_from_zminus(all_para_dict)
-        self.all_para_dict = all_para_dict.copy()
-        for i in ['R_mean','V_mean','H_mean_tri','K_mean_tri','S_tri','S_MWL','H_mean_rec','K_mean_rec','S_rec']:
-            self.all_para_dict[i+'_err'] = (zplus[i+'_err'] + zminus[i+'_err'])/2
-        
+
+        if float(self.specdata.header['Z_ERR'])<0:
+            print(self.specdata.header['OBSID'],self.specdata.header['FILENAME'],self.specdata.header['Z'],self.specdata.header['Z_ERR'])
+            for i in self.para_catalog[::2]:                
+                self.all_para_dict[i+'_err'] = -9999
+        else:
+            all_para_dict = self.all_para_dict.copy()
+            zplus = self.__calcErr_from_zplus(all_para_dict)
+            zminus = self.__calcErr_from_zminus(all_para_dict)
+            self.z = float(self.specdata.header['Z'])
+            self.__wave_calib()
+            for key in zplus:                
+                self.all_para_dict[key] = (zplus[key] + zminus[key])/2
         S_info_err = [self.all_para_dict[i] for i in self.para_catalog[1::2]]
-        para_dict_err = dict(zip(self.para_catalog[1::2],S_info_err))
-        return para_dict_err
+        para_err_dict = dict(zip(self.para_catalog[1::2],S_info_err))
+        return para_err_dict
         
         
     def __getOrigError(self):
@@ -259,8 +258,8 @@ class CaIISindex:
                 original_error.append(0)
         orig_error_bin = [2/(self.wave_z[i+1]-self.wave_z[i-1]) for i in range(1,len(self.wave_z)-1)]
         orig_error_bin = [1/(self.wave_z[1]-self.wave_z[0])]+orig_error_bin+[1/(self.wave_z[-2]-self.wave_z[-1])]
-        self.f_bin = scipy.interpolate.interp1d(self.wave_z,orig_error_bin,kind='linear')
-        self.f_err = scipy.interpolate.interp1d(self.wave_z,original_error,kind='linear')
+        self.f_bin = interp1d(self.wave_z,orig_error_bin,kind='linear')
+        self.f_err = interp1d(self.wave_z,original_error,kind='linear')
 
     def __calc_band_err(self,bin_center,step,band_width,tri=False):
         err_list = self.f_err(bin_center)
@@ -372,22 +371,21 @@ class CaIISindex:
                         }
         
         '''
-        
         self.calcSindex()
         z_err = self.calcErr_from_z()
         flux_err = self.calcErr_from_flux()
-            
-        for i in ['R_mean','V_mean','H_mean_tri','K_mean_tri','S_tri','S_MWL','H_mean_rec','K_mean_rec','S_rec']:
-            if z_err[i+'_err']<0 or flux_err[i+'_err']<0:
+
+        for key in flux_err:
+            if z_err[key]<0 or flux_err[key]<0:
                 tem_err = -9999
             else:
-                tem_err = (z_err[i+'_err']**2 + flux_err[i+'_err']**2)
+                tem_err = (z_err[key]**2 + flux_err[key]**2)
                 tem_err = tem_err**0.5
-            self.all_para_dict[i+'_err'] = tem_err
+            self.all_para_dict[key] = tem_err
         
         S_info_err = [self.all_para_dict[i] for i in self.para_catalog[1::2]]
         para_dict_err = dict(zip(self.para_catalog[1::2],S_info_err))
-        return para_dict_err        
+        return para_dict_err
         
     def calc(self,calc_para=False,accuracy=6,datasav=False,fitsinfo = ['OBSID','FILENAME'],header=True):
         if calc_para == False:
@@ -395,7 +393,7 @@ class CaIISindex:
             for key in self.all_para_dict:
                 self.all_para_dict[key] = round(self.all_para_dict[key],accuracy)
         if datasav:
-            self.recorddata(fitsinfo = fitsinfo,header=header)
+            self.__recorddata(fitsinfo = fitsinfo,header=header)
         return self.all_para_dict
 
     def __get_fitsinfo(self,fitsinfo=['OBSID','FILENAME']):
@@ -414,7 +412,6 @@ class CaIISindex:
     
     def __recorddata(self,fitsinfo = ['OBSID','FILENAME'],header=True):
         fits_dict = self.__get_fitsinfo(fitsinfo =fitsinfo)
-        
         record_dict = dict(**fits_dict,**self.all_para_dict)
         record_catalog = fitsinfo + list(self.para_catalog)
         record_info = [str(record_dict[i]) for i in record_dict]
@@ -494,17 +491,11 @@ class CaIISindex:
         rv_str = '$'+rv_str+'$'
         ax1.text(self.L_V+9,1.03,'Radial Velocity\n='+r'$\,$'+rv_str+r'$\,$'+'km/s\n', fontsize=15)
         return ax1,ax2
-        
-    def __plotInfo(self,ax1,ax2):
-        ax1,ax2 = self.__plotS(ax1,ax2)
-        
-        ax1.text(self.L_V-5,0.2,r'$V$ band',fontsize=15)
-        ax1.text(self.L_R-5,0.2,r'$R$ band',fontsize=15)
-        ax1.annotate("Ca II H "+str(self.L_H)+r'$\,$'+u'\u00C5',xy=(self.L_H,0.1),xytext=(self.L_H+4,0.15),
-                color="blue",weight="bold",fontsize=11,arrowprops=dict(arrowstyle="->",color="blue"))
-        ax1.annotate("Ca II K "+str(self.L_K)+r'$\,$'+u'\u00C5',xy=(self.L_K,0.1),xytext=(self.L_K+4,0.15),
-                color="blue",weight="bold",fontsize=11,arrowprops=dict(arrowstyle="->",color="blue"))
 
+    def __stellar_para(self):
+        if len(self.stellar_parameters)!=3:
+            error = 'set stellar parameters as a list with 3 elements: [teff (K), logg (dex), feh (dex)]'
+            raise KeyError(error)
         teff_str = '{}'.format(self.stellar_parameters[0])
         if (teff_str != 'unknown'):
             teff_str = teff_str.strip()
@@ -518,6 +509,19 @@ class CaIISindex:
         feh_str = feh_str.strip()
         if (feh_str != 'unknown'):
             feh_str = '$'+feh_str+'$'
+        return teff_str,logg_str,feh_str
+        
+    def __plotInfo(self,ax1,ax2):
+        ax1,ax2 = self.__plotS(ax1,ax2)
+        
+        ax1.text(self.L_V-5,0.2,r'$V$ band',fontsize=15)
+        ax1.text(self.L_R-5,0.2,r'$R$ band',fontsize=15)
+        ax1.annotate("Ca II H "+str(self.L_H)+r'$\,$'+u'\u00C5',xy=(self.L_H,0.1),xytext=(self.L_H+4,0.15),
+                color="blue",weight="bold",fontsize=11,arrowprops=dict(arrowstyle="->",color="blue"))
+        ax1.annotate("Ca II K "+str(self.L_K)+r'$\,$'+u'\u00C5',xy=(self.L_K,0.1),xytext=(self.L_K+4,0.15),
+                color="blue",weight="bold",fontsize=11,arrowprops=dict(arrowstyle="->",color="blue"))
+
+        teff_str,logg_str,feh_str = self.__stellar_para()   
         snrg_str = '{}'.format(self.specdata.header['SNRG'])
         snrr_str = '{}'.format(self.specdata.header['SNRR'])
         title_info = r'$T_\mathrm{eff}$=' + teff_str + r'   $\log\,g$=' + logg_str + '   [Fe/H]='+ feh_str + r'   $\mathrm{SNR}_g$=' + snrg_str + r'   $\mathrm{SNR}_r$=' + snrr_str
@@ -597,6 +601,7 @@ def main():
 if __name__ == '__main__':
 
     data_path = "example.fits"
+    #CaIISindex.save_path='dev'
     cs = CaIISindex(data_path)
     #cs.calcSindex()
     
@@ -608,9 +613,9 @@ if __name__ == '__main__':
     cs.calcError()
     print(cs.all_para_dict)
     '''
-
-    cs.stellar_parameters = ['5534.22','4.423','-0.025']
+    
+    #print(cs.calc(datasav=True))
+    #cs.stellar_parameters = ['5534.22','4.423','-0.025']
     print(cs.saveRecord())
-
     
 
